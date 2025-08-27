@@ -618,6 +618,9 @@ def buscar_productos_bd(q: str, limite: int = 300):
             (like, limite)
         )
         return cur.fetchall()
+    except Exception as e:
+        print("[DB ERROR] buscar_productos_bd:", e)
+        return []
     finally:
         conn.close()
 
