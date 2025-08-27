@@ -3,875 +3,839 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comparador de Precios - Mayoristas</title>
+    <title>Comparador de Precios - Sistema de Carrito</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        .product-card {
+            transition: transform 0.2s;
         }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+        .product-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+        .supplier-badge {
+            font-size: 0.8em;
         }
-
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-            position: relative;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-
-        .ai-badge {
+        .cart-badge {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: #28a745;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 0;
-            min-height: 70vh;
-        }
-
-        .left-panel {
-            padding: 30px;
-        }
-
-        .sidebar {
-            background: #f8f9fa;
-            border-left: 1px solid #e9ecef;
-            padding: 30px 25px;
-        }
-
-        .upload-section {
-            margin-bottom: 30px;
-        }
-
-        .section-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .upload-form {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            border: 3px dashed #007bff;
-            transition: all 0.3s ease;
-        }
-
-        .upload-form:hover {
-            border-color: #28a745;
-            background: #f0fff4;
-            transform: translateY(-2px);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 15px 20px;
-            font-size: 1rem;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            outline: none;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .form-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-            transform: translateY(-1px);
-        }
-
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .file-input {
-            position: absolute;
-            left: -9999px;
-        }
-
-        .file-input-button {
-            width: 100%;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .file-input-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-        }
-
-        .submit-btn {
-            width: 100%;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3);
-        }
-
-        .search-container {
-            position: relative;
-            margin-bottom: 30px;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 15px 50px 15px 20px;
-            font-size: 1.1rem;
-            border: 2px solid #e9ecef;
-            border-radius: 50px;
-            outline: none;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .search-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-        }
-
-        .search-controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .search-btn {
-            flex: 1;
-            padding: 12px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .search-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
-        }
-
-        .clear-btn {
-            flex: 1;
-            padding: 12px 20px;
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .clear-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-        }
-
-        .results-section {
-            min-height: 400px;
-        }
-
-        .results-info {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #e3f2fd;
-            border-radius: 10px;
-            color: #1565c0;
-            font-weight: 500;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .results-table th {
-            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
-            color: white;
-            padding: 15px 12px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .results-table td {
-            padding: 12px;
-            border-bottom: 1px solid #f0f0f0;
-            vertical-align: middle;
-        }
-
-        .results-table tr:hover {
-            background: #f8f9fa;
-            transform: translateX(2px);
-            transition: all 0.2s ease;
-        }
-
-        .results-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .product-name-cell {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: #2c3e50;
-            line-height: 1.3;
-        }
-
-        .price-cell {
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: #28a745;
-            white-space: nowrap;
-        }
-
-        .supplier-cell {
-            font-weight: 600;
-            color: #007bff;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-            font-size: 1.1rem;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #007bff;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007bff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Sidebar styles */
-        .loaded-lists {
-            margin-bottom: 30px;
-        }
-
-        .list-item {
-            background: white;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
-            position: relative;
-            transition: all 0.3s ease;
-        }
-
-        .list-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .list-name {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 5px;
-        }
-
-        .list-info {
-            font-size: 0.85rem;
-            color: #6c757d;
-        }
-
-        .remove-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
+            top: -8px;
+            right: -8px;
             background: #dc3545;
             color: white;
-            border: none;
-            border-radius: 15px;
-            width: 24px;
-            height: 24px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
+            border-radius: 50%;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
         }
-
-        .remove-btn:hover {
-            background: #c82333;
-            transform: scale(1.1);
-        }
-
-        .stats-section {
+        .cart-sidebar {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
             background: white;
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            transition: right 0.3s ease;
+            z-index: 1050;
+            overflow-y: auto;
         }
-
-        .stat-item {
+        .cart-sidebar.open {
+            right: 0;
+        }
+        .cart-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.5);
+            z-index: 1040;
+            display: none;
+        }
+        .cart-overlay.show {
+            display: block;
+        }
+        .cart-item {
+            border-bottom: 1px solid #eee;
+            padding: 1rem;
+        }
+        .quantity-controls {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding: 5px 0;
+            align-items: center;
+            gap: 0.5rem;
         }
-
-        .stat-label {
-            color: #6c757d;
-            font-size: 0.9rem;
+        .quantity-btn {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
         }
-
-        .stat-value {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        /* Status messages */
-        .status-message {
-            padding: 15px;
-            border-radius: 10px;
-            margin: 15px 0;
-            font-weight: 500;
-        }
-
-        .status-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .status-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .debug-info {
+        .quantity-btn:hover {
             background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 10px 0;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            color: #495057;
         }
-
-        @media (max-width: 1024px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .sidebar {
-                border-left: none;
-                border-top: 1px solid #e9ecef;
-            }
+        .business-info-form {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
         }
-
-                    @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .search-controls {
-                flex-direction: column;
-            }
-
-            .results-table {
-                font-size: 0.85rem;
-            }
-            
-            .results-table th,
-            .results-table td {
-                padding: 8px 6px;
-            }
-
-            .results-table th {
-                font-size: 0.8rem;
-            }
-
-            .product-name-cell {
-                font-size: 0.85rem;
-            }
-
-            .price-cell {
-                font-size: 1rem;
-            }
-
-            .supplier-cell {
-                font-size: 0.75rem;
-            }
+        .whatsapp-btn {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.25rem;
+        }
+        .whatsapp-btn:hover {
+            background: #128C7E;
+            color: white;
+            text-decoration: none;
+        }
+        .supplier-group {
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .supplier-header {
+            background: #e9ecef;
+            padding: 1rem;
+            font-weight: bold;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 2rem;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="ai-badge">🚚 DistriSulpi</div>
-            <h1>🛍️ Comparador de Precios</h1>
-            <p>Sistema inteligente para DistriSulpi</p>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#"><i class="fas fa-shopping-cart"></i> Comparador de Precios</a>
+            
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">Bienvenido, {{ user }}</span>
+                <button class="btn btn-outline-light me-2" id="cartBtn" type="button">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span class="cart-badge" id="cartBadge">0</span>
+                </button>
+                <form action="/logout" method="post" class="d-inline">
+                    <button class="btn btn-outline-light" type="submit">
+                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                    </button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Sección de Carga de Archivos -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-upload"></i> Cargar Lista de Precios</h5>
+            </div>
+            <div class="card-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="supplierName" class="form-label">Nombre del Proveedor</label>
+                            <input type="text" class="form-control" id="supplierName" name="supplier_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="fileInput" class="form-label">Archivo Excel (.xlsx, .xls)</label>
+                            <input type="file" class="form-control" id="fileInput" name="file" accept=".xlsx,.xls" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary d-block w-100">
+                                <i class="fas fa-upload"></i> Cargar
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
 
-        <div class="main-content">
-            <div class="left-panel">
-                <!-- Sección de carga de archivos -->
-                <div class="upload-section">
-                    <h3 class="section-title">
-                        📁 Cargar Lista de Precios
-                    </h3>
-                    <form id="uploadForm" class="upload-form">
-                        <div class="form-group">
-                            <label class="form-label" for="supplierName">Nombre del Proveedor</label>
-                            <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required>
+        <!-- Información del Comercio -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-store"></i> Información del Comercio</h5>
+            </div>
+            <div class="card-body">
+                <form id="businessForm" class="business-info-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="businessName" class="form-label">Nombre del Comercio</label>
+                            <input type="text" class="form-control" id="businessName" name="business_name" required>
                         </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">Archivo Excel</label>
-                            <div class="file-input-wrapper">
-                                <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" required>
-                                <button type="button" class="file-input-button" onclick="document.getElementById('fileInput').click()">
-                                    📊 Seleccionar Archivo
-                                </button>
-                            </div>
+                        <div class="col-md-6">
+                            <label for="businessPhone" class="form-label">Teléfono</label>
+                            <input type="text" class="form-control" id="businessPhone" name="phone" required>
                         </div>
-                        
-                        <button type="submit" class="submit-btn">
-                            🚀 Cargar Lista
+                        <div class="col-md-8">
+                            <label for="businessAddress" class="form-label">Dirección de Entrega</label>
+                            <input type="text" class="form-control" id="businessAddress" name="address" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="businessEmail" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="businessEmail" name="email">
+                        </div>
+                        <div class="col-12 mt-3">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Guardar Información
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Sección de Búsqueda -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-search"></i> Buscar Productos</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-10">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Buscar productos...">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-primary w-100" id="searchBtn">
+                            <i class="fas fa-search"></i> Buscar
                         </button>
-                    </form>
-                    <div id="uploadStatus"></div>
-                </div>
-
-                <!-- Sección de búsqueda -->
-                <div class="search-section">
-                    <h3 class="section-title">
-                        🔍 Buscar Productos
-                    </h3>
-                    <div class="search-container">
-                        <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos en todas las listas...">
-                    </div>
-                    <div class="search-controls">
-                        <button class="search-btn" onclick="searchProducts()">🔍 Buscar</button>
-                        <button class="clear-btn" onclick="clearLists()">🗑️ Limpiar Todo</button>
-                    </div>
-                </div>
-
-                <!-- Resultados -->
-                <div class="results-section">
-                    <div id="searchResults">
-                        <div class="no-results">
-                            <p>👆 Carga tu primera lista de precios y comienza a buscar</p>
-                            <p style="margin-top: 10px; font-size: 0.9rem; color: #28a745;">✨ Sistema preparado para integración con IA</p>
-                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="sidebar">
-                <!-- Listas cargadas -->
-                <div class="loaded-lists">
-                    <h4 class="section-title">
-                        📋 Listas Cargadas
-                    </h4>
-                    <div id="loadedLists">
-                        <p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>
-                    </div>
+        <!-- Resultados de Búsqueda -->
+        <div id="searchResults" class="mb-4"></div>
+
+        <!-- Listas Cargadas -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list"></i> Listas Cargadas</h5>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="refreshLists">
+                    <i class="fas fa-sync-alt"></i> Actualizar
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="loadedLists"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart Overlay -->
+    <div class="cart-overlay" id="cartOverlay"></div>
+
+    <!-- Cart Sidebar -->
+    <div class="cart-sidebar" id="cartSidebar">
+        <div class="p-3 border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Mi Carrito</h5>
+                <button class="btn btn-sm btn-outline-secondary" id="closeCart">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="cartItems" class="flex-grow-1">
+            <!-- Cart items will be loaded here -->
+        </div>
+        
+        <div class="p-3 border-top">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <strong>Total: </strong>
+                <strong id="cartTotal">$0.00</strong>
+            </div>
+            
+            <div class="d-grid gap-2">
+                <button class="btn btn-success" id="generatePdfsBtn" disabled>
+                    <i class="fas fa-file-pdf"></i> Generar Pedidos
+                </button>
+                <button class="btn btn-outline-secondary" id="clearCartBtn">
+                    <i class="fas fa-trash"></i> Limpiar Carrito
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para PDFs y WhatsApp -->
+    <div class="modal fade" id="orderModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-file-pdf"></i> Pedidos Generados</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-
-                <!-- Estadísticas -->
-                <div class="stats-section">
-                    <h4 style="margin-bottom: 15px; color: #2c3e50;">📊 Estadísticas</h4>
-                    <div class="stat-item">
-                        <span class="stat-label">Total listas:</span>
-                        <span class="stat-value" id="totalLists">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Productos totales:</span>
-                        <span class="stat-value" id="totalProducts">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Última búsqueda:</span>
-                        <span class="stat-value" id="lastSearch">-</span>
-                    </div>
+                <div class="modal-body">
+                    <div id="orderResults"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Cargar información de listas al inicio
-        loadListsInfo();
+    <!-- Loading Spinner -->
+    <div class="loading-spinner" id="loadingSpinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2">Procesando...</p>
+    </div>
 
-        // Manejo del formulario de upload
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Variables globales
+        let cartCount = 0;
+        let businessInfoLoaded = false;
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            loadBusinessInfo();
+            loadCart();
+            loadLists();
+            
+            // Event listeners
+            document.getElementById('uploadForm').addEventListener('submit', handleUpload);
+            document.getElementById('businessForm').addEventListener('submit', saveBusinessInfo);
+            document.getElementById('searchBtn').addEventListener('click', searchProducts);
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') searchProducts();
+            });
+            document.getElementById('cartBtn').addEventListener('click', toggleCart);
+            document.getElementById('closeCart').addEventListener('click', toggleCart);
+            document.getElementById('cartOverlay').addEventListener('click', toggleCart);
+            document.getElementById('clearCartBtn').addEventListener('click', clearCart);
+            document.getElementById('generatePdfsBtn').addEventListener('click', generatePdfs);
+            document.getElementById('refreshLists').addEventListener('click', loadLists);
+        });
+
+        // Funciones de carga de archivos
+        async function handleUpload(e) {
             e.preventDefault();
             
-            const formData = new FormData();
-            const fileInput = document.getElementById('fileInput');
-            const supplierName = document.getElementById('supplierName').value;
+            const formData = new FormData(e.target);
+            const submitBtn = e.target.querySelector('button[type="submit"]');
             
-            if (!fileInput.files[0]) {
-                showStatus('error', 'Por favor selecciona un archivo');
-                return;
-            }
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando...';
             
-            formData.append('file', fileInput.files[0]);
-            formData.append('supplier_name', supplierName);
-            
-            showStatus('info', '⏳ Procesando archivo...');
-            
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
                 if (data.success) {
-                    showStatus('success', '✅ ' + data.message);
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
-                    loadListsInfo(); // Recargar info de listas
-                    
-                    // Limpiar formulario
-                    document.getElementById('uploadForm').reset();
-                    updateFileButton();
+                    showAlert('success', data.message);
+                    e.target.reset();
+                    loadLists();
                 } else {
-                    showStatus('error', '❌ ' + (data.error || 'Error desconocido'));
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
+                    showAlert('danger', data.error || 'Error cargando archivo');
                 }
-            })
-            .catch(error => {
-                showStatus('error', '🔴 Error de conexión: ' + error.message);
-                console.error('Error:', error);
-            });
-        });
-
-        // Búsqueda con Enter
-        document.getElementById('searchInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                searchProducts();
-            }
-        });
-
-        // Actualizar botón de archivo cuando se selecciona
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            updateFileButton();
-        });
-
-        function updateFileButton() {
-            const fileInput = document.getElementById('fileInput');
-            const button = document.querySelector('.file-input-button');
-            
-            if (fileInput.files[0]) {
-                button.innerHTML = `📊 ${fileInput.files[0].name}`;
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            } else {
-                button.innerHTML = '📊 Seleccionar Archivo';
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-upload"></i> Cargar';
             }
         }
 
-        function searchProducts() {
+        // Funciones de información del comercio
+        async function loadBusinessInfo() {
+            try {
+                const response = await fetch('/business/info');
+                const data = await response.json();
+                
+                if (data.business_name) {
+                    document.getElementById('businessName').value = data.business_name || '';
+                    document.getElementById('businessAddress').value = data.address || '';
+                    document.getElementById('businessPhone').value = data.phone || '';
+                    document.getElementById('businessEmail').value = data.email || '';
+                    businessInfoLoaded = true;
+                }
+            } catch (error) {
+                console.error('Error cargando información del comercio:', error);
+            }
+        }
+
+        async function saveBusinessInfo(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch('/business/info', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', 'Información del comercio guardada');
+                    businessInfoLoaded = true;
+                    updateGenerateButton();
+                } else {
+                    showAlert('danger', result.error || 'Error guardando información');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            }
+        }
+
+        // Funciones de búsqueda
+        async function searchProducts() {
             const query = document.getElementById('searchInput').value.trim();
+            const resultsDiv = document.getElementById('searchResults');
+            
             if (!query) {
-                showStatus('error', '🔍 Ingresa un término de búsqueda');
+                resultsDiv.innerHTML = '';
                 return;
             }
+            
+            resultsDiv.innerHTML = '<div class="text-center"><div class="spinner-border"></div><p>Buscando...</p></div>';
+            
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    displaySearchResults(data.results);
+                } else {
+                    resultsDiv.innerHTML = '<div class="alert alert-info">No se encontraron productos</div>';
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = '<div class="alert alert-danger">Error en la búsqueda</div>';
+            }
+        }
 
+        function displaySearchResults(results) {
             const resultsDiv = document.getElementById('searchResults');
-            resultsDiv.innerHTML = `
-                <div class="loading">
-                    <div class="spinner"></div>
-                    Buscando "${query}"...
+            
+            let html = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Resultados de búsqueda (${results.length} productos)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+            `;
+            
+            results.forEach(product => {
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card product-card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">${product.product}</h6>
+                                <p class="card-text">
+                                    <span class="badge bg-primary supplier-badge">${product.supplier}</span><br>
+                                    <strong class="text-success fs-5">${product.price_formatted}</strong>
+                                </p>
+                                <button class="btn btn-outline-primary btn-sm" 
+                                        onclick="addToCart('${product.id}', '${product.product}', ${product.price}, '${product.supplier}')">
+                                    <i class="fas fa-cart-plus"></i> Agregar al Carrito
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                        </div>
+                    </div>
                 </div>
             `;
-
-            fetch(`/search?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    displayResults(data);
-                    document.getElementById('lastSearch').textContent = query;
-                })
-                .catch(error => {
-                    resultsDiv.innerHTML = `
-                        <div class="no-results">
-                            <p>❌ Error en la búsqueda: ${error.message}</p>
-                        </div>
-                    `;
-                });
+            
+            resultsDiv.innerHTML = html;
         }
 
-        function displayResults(data) {
-            const resultsDiv = document.getElementById('searchResults');
+        // Funciones del carrito
+        async function addToCart(productId, productName, price, supplier) {
+            try {
+                const response = await fetch('/cart/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        quantity: 1
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', `${productName} agregado al carrito`);
+                    loadCart();
+                } else {
+                    showAlert('danger', data.error || 'Error agregando al carrito');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            }
+        }
+
+        async function loadCart() {
+            try {
+                const response = await fetch('/cart/get');
+                const data = await response.json();
+                
+                if (data.cart) {
+                    updateCartDisplay(data.cart, data.total, data.suppliers);
+                    cartCount = data.cart.length;
+                    document.getElementById('cartBadge').textContent = cartCount;
+                    updateGenerateButton();
+                }
+            } catch (error) {
+                console.error('Error cargando carrito:', error);
+            }
+        }
+
+        function updateCartDisplay(cart, total, suppliers) {
+            const cartItems = document.getElementById('cartItems');
+            const cartTotal = document.getElementById('cartTotal');
             
-            if (data.total === 0) {
-                const message = data.message || `No se encontraron productos que coincidan con "${data.query}"`;
-                resultsDiv.innerHTML = `
-                    <div class="no-results">
-                        <p>🔍 ${message}</p>
+            cartTotal.textContent = `${total.toFixed(2)}`;
+            
+            if (cart.length === 0) {
+                cartItems.innerHTML = `
+                    <div class="text-center p-4">
+                        <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">Tu carrito está vacío</p>
                     </div>
                 `;
                 return;
             }
-
-            const resultsInfo = `
-                <div class="results-info">
-                    <div>📊 ${data.total} resultado(s) para "<strong>${data.query}</strong>"</div>
-                </div>
-            `;
-
-            const tableHeader = `
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 50%;">Producto</th>
-                            <th style="width: 25%;">Precio</th>
-                            <th style="width: 25%;">Mayorista</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            const tableRows = data.results.map(product => `
-                <tr>
-                    <td class="product-name-cell">${product.product}</td>
-                    <td class="price-cell">${product.price_formatted}</td>
-                    <td class="supplier-cell">${product.supplier}</td>
-                </tr>
-            `).join('');
-
-            const tableFooter = `
-                    </tbody>
-                </table>
-            `;
-
-            resultsDiv.innerHTML = resultsInfo + tableHeader + tableRows + tableFooter;
+            
+            let html = '';
+            
+            // Agrupar por proveedor
+            for (const [supplier, items] of Object.entries(suppliers)) {
+                html += `
+                    <div class="supplier-group">
+                        <div class="supplier-header">
+                            <i class="fas fa-store"></i> ${supplier}
+                        </div>
+                `;
+                
+                items.forEach(item => {
+                    html += `
+                        <div class="cart-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">${item.product}</h6>
+                                    <small class="text-muted">${item.price.toFixed(2)} c/u</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" onclick="removeFromCart('${item.id}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                <div class="quantity-controls">
+                                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${item.quantity - 1})">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                    <span class="mx-2">${item.quantity}</span>
+                                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${item.quantity + 1})">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <strong>${(item.price * item.quantity).toFixed(2)}</strong>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+            
+            cartItems.innerHTML = html;
         }
 
-        function loadListsInfo() {
-            fetch('/lists')
-                .then(response => response.json())
-                .then(data => {
-                    const listsDiv = document.getElementById('loadedLists');
-                    if (data.total === 0) {
-                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
-                        updateStats(0, 0);
-                        return;
-                    }
+        async function updateQuantity(productId, newQuantity) {
+            if (newQuantity < 1) return;
+            
+            try {
+                const response = await fetch('/cart/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        quantity: newQuantity
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadCart();
+                } else {
+                    showAlert('danger', 'Error actualizando cantidad');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            }
+        }
 
-                    let totalProducts = 0;
-                    const html = data.lists.map(list => {
-                        totalProducts += list.total_products;
-                        return `
-                            <div class="list-item">
-                                <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
-                                <div class="list-name">${list.supplier}</div>
-                                <div class="list-info">
-                                    ${list.total_products} productos<br>
-                                    <small>Archivo: ${list.filename}</small>
+        async function removeFromCart(productId) {
+            try {
+                const response = await fetch('/cart/remove', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        product_id: productId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadCart();
+                } else {
+                    showAlert('danger', 'Error removiendo producto');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            }
+        }
+
+        async function clearCart() {
+            if (!confirm('¿Estás seguro de que quieres limpiar todo el carrito?')) return;
+            
+            try {
+                const response = await fetch('/cart/clear');
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadCart();
+                    showAlert('success', 'Carrito limpiado');
+                } else {
+                    showAlert('danger', 'Error limpiando carrito');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            }
+        }
+
+        function toggleCart() {
+            const sidebar = document.getElementById('cartSidebar');
+            const overlay = document.getElementById('cartOverlay');
+            
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+        }
+
+        // Función para generar PDFs
+        async function generatePdfs() {
+            if (!businessInfoLoaded) {
+                showAlert('warning', 'Por favor complete la información del comercio antes de generar pedidos');
+                return;
+            }
+            
+            const button = document.getElementById('generatePdfsBtn');
+            const originalText = button.innerHTML;
+            
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+            
+            try {
+                const response = await fetch('/cart/generate_pdfs', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayOrderResults(data);
+                    
+                    // Mostrar modal
+                    const modal = new bootstrap.Modal(document.getElementById('orderModal'));
+                    modal.show();
+                } else {
+                    showAlert('danger', data.error || 'Error generando pedidos');
+                }
+            } catch (error) {
+                showAlert('danger', 'Error de conexión');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        function displayOrderResults(data) {
+            const resultsDiv = document.getElementById('orderResults');
+            
+            let html = `
+                <div class="alert alert-success">
+                    <h5><i class="fas fa-check-circle"></i> ¡Pedidos Generados Exitosamente!</h5>
+                    <p>Se generaron ${data.pdfs.length} PDFs para ${data.total_suppliers} proveedores.</p>
+                </div>
+            `;
+            
+            data.whatsapp_links.forEach((link, index) => {
+                const pdf = data.pdfs[index];
+                html += `
+                    <div class="supplier-group mb-3">
+                        <div class="supplier-header">
+                            <i class="fas fa-store"></i> ${link.supplier}
+                            <span class="float-end badge bg-success">${link.total_formatted}</span>
+                        </div>
+                        <div class="p-3">
+                            <p class="mb-2">
+                                <i class="fas fa-box"></i> ${pdf.items_count} productos
+                            </p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="/download_pdf/${pdf.filename}" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-download"></i> Descargar PDF
+                                </a>
+                                <a href="${link.url}" target="_blank" class="whatsapp-btn btn-sm">
+                                    <i class="fab fa-whatsapp"></i> Enviar por WhatsApp
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Instrucciones:</h6>
+                    <ol>
+                        <li>Descarga los PDFs para tus registros</li>
+                        <li>Haz clic en "Enviar por WhatsApp" para cada proveedor</li>
+                        <li>El mensaje incluirá todos los datos necesarios</li>
+                        <li>Los proveedores recibirán solo sus productos</li>
+                    </ol>
+                </div>
+            `;
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        // Función para cargar listas
+        async function loadLists() {
+            try {
+                const response = await fetch('/lists');
+                const data = await response.json();
+                
+                const listsDiv = document.getElementById('loadedLists');
+                
+                if (data.lists && data.lists.length > 0) {
+                    let html = '<div class="row">';
+                    
+                    data.lists.forEach(list => {
+                        html += `
+                            <div class="col-md-4 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">${list.supplier}</h6>
+                                        <p class="card-text">
+                                            <small class="text-muted">
+                                                ${list.total_products} productos<br>
+                                                Cargado: ${new Date(list.upload_date).toLocaleString()}
+                                            </small>
+                                        </p>
+                                        <button class="btn btn-outline-danger btn-sm" 
+                                                onclick="removeList('${list.supplier}')">
+                                            <i class="fas fa-trash"></i> Eliminar
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         `;
-                    }).join('');
-
+                    });
+                    
+                    html += '</div>';
                     listsDiv.innerHTML = html;
-                    updateStats(data.total, totalProducts);
-                })
-                .catch(error => console.error('Error cargando listas:', error));
-        }
-
-        function updateStats(totalLists, totalProducts) {
-            document.getElementById('totalLists').textContent = totalLists;
-            document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
-        }
-
-        function clearLists() {
-            if (confirm('¿Estás seguro de eliminar TODAS las listas cargadas?')) {
-                fetch('/clear')
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus('success', '🗑️ ' + data.message);
-                        loadListsInfo();
-                        document.getElementById('searchResults').innerHTML = `
-                            <div class="no-results">
-                                <p>🗑️ Todas las listas han sido eliminadas</p>
-                                <p style="margin-top: 10px;">Carga nuevos archivos para comenzar</p>
-                            </div>
-                        `;
-                        document.getElementById('searchInput').value = '';
-                        document.getElementById('lastSearch').textContent = '-';
-                    });
+                } else {
+                    listsDiv.innerHTML = '<p class="text-muted">No hay listas cargadas</p>';
+                }
+            } catch (error) {
+                console.error('Error cargando listas:', error);
             }
         }
 
-        function removeList(supplier) {
-            if (confirm(`¿Eliminar lista de ${supplier}?`)) {
-                fetch(`/remove_list/${encodeURIComponent(supplier)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus(data.success ? 'success' : 'error', 
-                                 data.success ? '✅ ' + data.message : '❌ ' + data.message);
-                        loadListsInfo();
-                        
-                        // Si había una búsqueda activa, repetirla
-                        const currentSearch = document.getElementById('searchInput').value.trim();
-                        if (currentSearch) {
-                            setTimeout(() => searchProducts(), 500);
-                        }
-                    });
-            }
-        }
-
-        function showStatus(type, message) {
-            const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
+        async function removeList(supplier) {
+            if (!confirm(`¿Eliminar la lista de ${supplier}?`)) return;
             
-            // Auto-limpiar después de 5 segundos
-            setTimeout(() => {
-                statusDiv.innerHTML = '';
-            }, 5000);
+            try {
+                const response = await fetch(`/remove_list/${encodeURIComponent(supplier)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('success', data.message);
+                    loadLists();
+                } else {
+                    showAlert('danger', data.message);
+                }
+            } catch (error) {
+                showAlert('danger', 'Error eliminando lista');
+            }
         }
 
-        function showDebug(debugInfo) {
-            const statusDiv = document.getElementById('uploadStatus');
-            let debugHtml = '<div class="debug-info"><strong>🔧 Información de debug:</strong><br>';
-            debugInfo.forEach(info => {
-                debugHtml += info + '<br>';
-            });
-            debugHtml += '</div>';
-            statusDiv.innerHTML += debugHtml;
+        // Función para actualizar botón de generar
+        function updateGenerateButton() {
+            const button = document.getElementById('generatePdfsBtn');
+            const hasItems = cartCount > 0;
+            
+            button.disabled = !hasItems || !businessInfoLoaded;
+            
+            if (!businessInfoLoaded) {
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Complete Info Comercio';
+            } else if (!hasItems) {
+                button.innerHTML = '<i class="fas fa-file-pdf"></i> Carrito Vacío';
+            } else {
+                button.innerHTML = '<i class="fas fa-file-pdf"></i> Generar Pedidos';
+            }
+        }
+
+        // Función para mostrar alertas
+        function showAlert(type, message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insertar al inicio del container
+            const container = document.querySelector('.container');
+            container.insertBefore(alertDiv, container.firstChild);
+            
+            // Auto-remover después de 5 segundos
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
         }
     </script>
 </body>
 </html>
- <!-- Botón Logout fijo arriba-izquierda -->
-<style>
-  .logout-wrap{position:fixed;top:16px;left:16px;z-index:1000}
-  .logout-btn{
-    display:inline-flex;align-items:center;gap:.5rem;
-    padding:.55rem .9rem;border-radius:9999px;cursor:pointer;
-    border:1px solid #1c2947;background:#0f172a;color:#e8edf7;
-    box-shadow:0 6px 18px rgba(0,0,0,.25); transition:transform .12s, box-shadow .12s, opacity .12s
-  }
-  .logout-btn:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(0,0,0,.32)}
-  .logout-btn:active{transform:translateY(0)}
-  .logout-icon{font-size:1rem;line-height:1}
-</style>
-
-<div class="logout-wrap">
-  <form action="{{ url_for('logout') }}" method="post">
-    <button type="submit" class="logout-btn" title="Cerrar sesión">
-      <span class="logout-icon">⟵</span>
-      <span>Cerrar sesión</span>
-    </button>
-  </form>
-</div>

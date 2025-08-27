@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, flash, redirect, url_for, send_file
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, flash, redirect, url_for
 import pandas as pd
 import os
 from werkzeug.utils import secure_filename
@@ -6,29 +6,18 @@ import json
 from datetime import datetime
 import re
 import mysql.connector
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
-import urllib.parse
-import io
 
 app = Flask(__name__)
 app.secret_key = "tios"  
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['PDFS_FOLDER'] = 'pdfs'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Crear carpetas si no existen
-for folder in [app.config['UPLOAD_FOLDER'], app.config['PDFS_FOLDER']]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+# Crear carpeta de uploads si no existe
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# Almacenamiento global para las listas de precios y carritos
+# Almacenamiento global para las listas de precios
 price_lists = {}
-user_carts = {}  # Carritos por usuario
-business_info = {}  # Información del comercio por usuario
 
 # Ubicaciones por defecto de mayoristas
 DEFAULT_LOCATIONS = {
@@ -36,14 +25,6 @@ DEFAULT_LOCATIONS = {
     'Distribuidora Norte': 'San Martín 567, Córdoba, Argentina',
     'Comercial Sur': 'Pellegrini 890, Rosario, Argentina',
     'Proveedor Express': 'Florida 456, Buenos Aires, Argentina'
-}
-
-# Teléfonos de mayoristas para WhatsApp
-SUPPLIER_PHONES = {
-    'Gallesur': '+541156649404',
-    'Distribuidora Norte': '+5491123456790',
-    'Comercial Sur': '+5491123456791',
-    'Proveedor Express': '+5491123456792'
 }
 
 class PriceListProcessor:
@@ -147,8 +128,6 @@ class PriceListProcessor:
             return price_value
         except:
             return None
-    
-    
     
     def process_excel_file(self, file_path, supplier_name):
         """Procesa un archivo Excel y extrae productos y precios"""
@@ -290,8 +269,7 @@ class PriceListProcessor:
                                         'price': price,
                                         'supplier': supplier_name,
                                         'sheet': sheet_name,
-                                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina'),
-                                        'id': f"{supplier_name}_{sheet_name}_{idx}_{products_in_sheet}"  # ID único para el carrito
+                                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina')
                                     }
                                     all_products.append(product_info)
                                     products_in_sheet += 1
@@ -338,141 +316,6 @@ class PriceListProcessor:
 # Crear instancia del procesador
 processor = PriceListProcessor()
 
-def get_connection():
-    return mysql.connector.connect(
-        host="localhost",      # Cambiá si tu servidor MySQL no es local
-        user="root",           # Usuario de MySQL
-        password="12345678",# Contraseña de MySQL
-        database="login_db"    # Base de datos creada
-    )
-
-# Verifica usuario en la DB
-def get_user(username, password):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM usuarios WHERE username=%s AND password=%s", (username, password))
-    user = cursor.fetchone()
-    conn.close()
-    return user
-
-def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
-    """Genera un PDF para un proveedor específico"""
-    
-    # Crear el PDF
-    pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
-    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
-    
-    # Estilos
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        spaceAfter=20,
-        textColor=colors.black,
-        alignment=1  # Centro
-    )
-    
-    # Contenido del PDF
-    story = []
-    
-    # Título
-    story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
-    story.append(Spacer(1, 20))
-    
-    # Información del comercio
-    business_info_text = f"""
-    <b>INFORMACIÓN DEL COMERCIO:</b><br/>
-    Comercio: {business_data.get('business_name', 'N/A')}<br/>
-    Dirección de Entrega: {business_data.get('address', 'N/A')}<br/>
-    Teléfono: {business_data.get('phone', 'N/A')}<br/>
-    Email: {business_data.get('email', 'N/A')}<br/>
-    """
-    story.append(Paragraph(business_info_text, styles['Normal']))
-    story.append(Spacer(1, 20))
-    
-    # Fecha del pedido
-    story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
-    story.append(Spacer(1, 20))
-    
-    # Tabla de productos
-    table_data = [['Producto', 'Cantidad', 'Precio Unit.', 'Subtotal']]
-    total = 0
-    
-    for item in items:
-        quantity = item['quantity']
-        price = item['price']
-        subtotal = quantity * price
-        total += subtotal
-        
-        table_data.append([
-            item['product'],
-            str(quantity),
-            f"${price:,.2f}",
-            f"${subtotal:,.2f}"
-        ])
-    
-    # Agregar total
-    table_data.append(['', '', 'TOTAL:', f"${total:,.2f}"])
-    
-    # Crear tabla
-    table = Table(table_data, colWidths=[3*inch, 1*inch, 1.2*inch, 1.3*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-    
-    story.append(table)
-    story.append(Spacer(1, 30))
-    
-    # Información adicional
-    story.append(Paragraph("<b>DATOS DEL PROVEEDOR:</b>", styles['Heading2']))
-    supplier_info_text = f"""
-    Proveedor: {supplier_name}<br/>
-    Dirección: {DEFAULT_LOCATIONS.get(supplier_name, 'N/A')}<br/>
-    """
-    story.append(Paragraph(supplier_info_text, styles['Normal']))
-    
-    # Generar PDF
-    doc.build(story)
-    return pdf_path
-
-def create_whatsapp_message(supplier_name, items, business_data, total):
-    """Crea el mensaje de WhatsApp para enviar al proveedor"""
-    
-    message = f"""🛒 *NUEVO PEDIDO - {business_data.get('business_name', 'Comercio')}*
-
-📍 *Datos de Entrega:*
-• Comercio: {business_data.get('business_name', 'N/A')}
-• Dirección: {business_data.get('address', 'N/A')}
-• Teléfono: {business_data.get('phone', 'N/A')}
-• Email: {business_data.get('email', 'N/A')}
-
-📦 *Productos Solicitados:*
-"""
-    
-    for item in items:
-        subtotal = item['quantity'] * item['price']
-        message += f"• {item['product']}\n"
-        message += f"  Cantidad: {item['quantity']}\n"
-        message += f"  Precio: ${item['price']:,.2f} c/u\n"
-        message += f"  Subtotal: ${subtotal:,.2f}\n\n"
-    
-    message += f"💰 *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
-    message += f"📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
-    message += "Por favor confirme disponibilidad y tiempo de entrega. ¡Gracias!"
-    
-    return message
-
-# RUTAS ORIGINALES
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -568,267 +411,6 @@ def search_products():
         'suppliers_count': len(price_lists)
     })
 
-# NUEVAS RUTAS PARA EL CARRITO
-
-@app.route('/cart/add', methods=['POST'])
-def add_to_cart():
-    """Agregar producto al carrito"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    user = session['user']
-    data = request.get_json()
-    
-    product_id = data.get('product_id')
-    quantity = int(data.get('quantity', 1))
-    
-    # Buscar el producto en las listas
-    product_found = None
-    for supplier_data in price_lists.values():
-        for product in supplier_data['products']:
-            if product['id'] == product_id:
-                product_found = product
-                break
-        if product_found:
-            break
-    
-    if not product_found:
-        return jsonify({'error': 'Producto no encontrado'})
-    
-    # Inicializar carrito del usuario si no existe
-    if user not in user_carts:
-        user_carts[user] = []
-    
-    # Verificar si el producto ya está en el carrito
-    existing_item = None
-    for item in user_carts[user]:
-        if item['id'] == product_id:
-            existing_item = item
-            break
-    
-    if existing_item:
-        existing_item['quantity'] += quantity
-    else:
-        cart_item = {
-            'id': product_id,
-            'product': product_found['product'],
-            'price': product_found['price'],
-            'supplier': product_found['supplier'],
-            'quantity': quantity
-        }
-        user_carts[user].append(cart_item)
-    
-    return jsonify({
-        'success': True,
-        'message': f'Producto agregado al carrito',
-        'cart_count': len(user_carts[user])
-    })
-
-@app.route('/cart/get')
-def get_cart():
-    """Obtener contenido del carrito"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    user = session['user']
-    cart = user_carts.get(user, [])
-    
-    # Calcular totales
-    total = sum(item['price'] * item['quantity'] for item in cart)
-    
-    # Agrupar por proveedor
-    suppliers = {}
-    for item in cart:
-        supplier = item['supplier']
-        if supplier not in suppliers:
-            suppliers[supplier] = []
-        suppliers[supplier].append(item)
-    
-    return jsonify({
-        'cart': cart,
-        'total': total,
-        'suppliers': suppliers,
-        'total_formatted': f"${total:,.2f}"
-    })
-
-@app.route('/cart/update', methods=['POST'])
-def update_cart():
-    """Actualizar cantidad de producto en el carrito"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    user = session['user']
-    data = request.get_json()
-    
-    product_id = data.get('product_id')
-    quantity = int(data.get('quantity', 1))
-    
-    if user not in user_carts:
-        return jsonify({'error': 'Carrito vacío'})
-    
-    # Buscar y actualizar el producto
-    for item in user_carts[user]:
-        if item['id'] == product_id:
-            if quantity <= 0:
-                user_carts[user].remove(item)
-            else:
-                item['quantity'] = quantity
-            return jsonify({'success': True})
-    
-    return jsonify({'error': 'Producto no encontrado en el carrito'})
-
-@app.route('/cart/remove', methods=['POST'])
-def remove_from_cart():
-    """Remover producto del carrito"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    user = session['user']
-    data = request.get_json()
-    
-    product_id = data.get('product_id')
-    
-    if user not in user_carts:
-        return jsonify({'error': 'Carrito vacío'})
-    
-    # Buscar y remover el producto
-    for item in user_carts[user]:
-        if item['id'] == product_id:
-            user_carts[user].remove(item)
-            return jsonify({'success': True})
-    
-    return jsonify({'error': 'Producto no encontrado en el carrito'})
-
-@app.route('/cart/clear')
-def clear_cart():
-    """Limpiar todo el carrito"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    user = session['user']
-    user_carts[user] = []
-    
-    return jsonify({'success': True, 'message': 'Carrito limpiado'})
-
-# Variable global para la información del negocio
-business_data = {}
-
-@app.route('/business/info', methods=['GET', 'POST'])
-def business_info():
-    """Manejar información del comercio"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'}), 401
-    
-    user = session['user']
-    
-    if request.method == 'POST':
-        data = request.get_json()
-        
-        business_data[user] = {
-            'business_name': data.get('business_name', ''),
-            'address': data.get('address', ''),
-            'phone': data.get('phone', ''),
-            'email': data.get('email', '')
-        }
-        
-        return jsonify({'success': True, 'message': 'Información guardada'}), 200
-    
-    # GET - obtener información
-    info = business_data.get(user, {})
-    return jsonify(info), 200
-
-
-@app.route('/cart/generate_pdfs', methods=['POST'])
-def generate_pdfs():
-    global business_data, user_carts
-
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'}), 401
-
-    user = session['user']
-
-    # Validar información del negocio
-    if user not in business_data:
-        return jsonify({'error': 'Primero complete la información del comercio'}), 400
-
-    # Validar carrito
-    if user not in user_carts or not user_carts[user]:
-        return jsonify({'error': 'Carrito vacío'}), 400
-
-    cart = user_carts[user]
-    business_info = business_data[user]
-
-    # Agrupar productos por proveedor
-    suppliers = {}
-    for item in cart:
-        supplier = item.get('supplier', 'Desconocido')
-        if supplier not in suppliers:
-            suppliers[supplier] = []
-        suppliers[supplier].append(item)
-
-    # Generar PDFs y enlaces de WhatsApp
-    pdfs_generated = []
-    whatsapp_links = []
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    for supplier_name, items in suppliers.items():
-        # Generar nombre y ruta del PDF
-        pdf_filename = f"pedido_{supplier_name.replace(' ', '_')}_{user}_{timestamp}.pdf"
-        pdf_path = generate_pdf_for_supplier(supplier_name, items, business_info, pdf_filename)
-
-        # Calcular total para este proveedor
-        supplier_total = sum(item['quantity'] * item['price'] for item in items)
-
-        # Crear mensaje de WhatsApp
-        whatsapp_message = create_whatsapp_message(supplier_name, items, business_info, supplier_total)
-
-        # Crear enlace de WhatsApp
-        phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # Teléfono por defecto
-        whatsapp_url = f"https://wa.me/{phone.replace('+', '')}?text={urllib.parse.quote(whatsapp_message)}"
-
-        # Agregar resultados
-        pdfs_generated.append({
-            'supplier': supplier_name,
-            'filename': pdf_filename,
-            'total': supplier_total,
-            'total_formatted': f"${supplier_total:,.2f}",
-            'items_count': len(items),
-            'pdf_path': pdf_path  # Por si necesitas la ruta completa
-        })
-
-        whatsapp_links.append({
-            'supplier': supplier_name,
-            'phone': phone,
-            'url': whatsapp_url,
-            'total': supplier_total,
-            'total_formatted': f"${supplier_total:,.2f}"
-        })
-
-    return jsonify({
-        'success': True,
-        'pdfs': pdfs_generated,
-        'whatsapp_links': whatsapp_links,
-        'total_suppliers': len(suppliers),
-        'message': f'Se generaron {len(pdfs_generated)} PDFs para {len(suppliers)} proveedores'
-    }), 200
-
-@app.route('/download_pdf/<filename>')
-def download_pdf(filename):
-    """Descargar PDF generado"""
-    if 'user' not in session:
-        return jsonify({'error': 'No hay sesión activa'})
-    
-    try:
-        return send_file(
-            os.path.join(app.config['PDFS_FOLDER'], filename),
-            as_attachment=True,
-            download_name=filename
-        )
-    except Exception as e:
-        return jsonify({'error': f'Error descargando archivo: {str(e)}'})
-
-# RUTAS ORIGINALES CONTINUADAS
 @app.route('/lists')
 def get_loaded_lists():
     """Obtener información de las listas cargadas"""
@@ -930,8 +512,22 @@ def cleanup_temp_files():
             'success': False,
             'message': f'Error limpiando archivos: {str(e)}'
         })
+def get_connection():
+    return mysql.connector.connect(
+        host="localhost",      # Cambiá si tu servidor MySQL no es local
+        user="root",           # Usuario de MySQL
+        password="12345678",# Contraseña de MySQL
+        database="login_db"    # Base de datos creada
+    )
 
-# RUTAS DE AUTENTICACIÓN
+# Verifica usuario en la DB
+def get_user(username, password):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM usuarios WHERE username=%s AND password=%s", (username, password))
+    user = cursor.fetchone()
+    conn.close()
+    return user
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -948,6 +544,8 @@ def login():
 
     # Si es GET → mostrar login
     return render_template("login.html")
+ 
+
 
 @app.route("/index")
 def index_pagina():
@@ -955,18 +553,14 @@ def index_pagina():
         return redirect(url_for("login"))   # si no hay sesión → login
     return render_template("index.html", user=session["user"])
 
+
 @app.route("/logout", methods=["POST"])
 def logout():
-    user = session.get("user")
-    if user:
-        # Limpiar carrito del usuario al cerrar sesión (opcional)
-        # user_carts.pop(user, None)
-        # business_info.pop(user, None)
-        pass
-    
     session.pop("user", None)
     flash("Sesión cerrada", "info")
     return redirect(url_for("login"))
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
