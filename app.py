@@ -6,6 +6,32 @@ import json
 from datetime import datetime
 import re
 import mysql.connector
+from functools import wraps
+from flask import redirect, url_for, session, request 
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*a, **kw):
+        if "user" not in session:
+            return redirect(url_for("login"))
+        return f(*a, **kw)
+    return wrapper
+
+def role_required(role):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*a, **kw):
+            if "user" not in session:
+                return redirect(url_for("login"))
+            if session.get("role") != role:
+                # si no es del rol requerido, mandalo a su panel de usuario
+                return redirect(url_for("index_usuario"))
+            return f(*a, **kw)
+        return wrapper
+    return decorator
+
+
+
 
 app = Flask(__name__)
 app.secret_key = "tios"  
@@ -322,111 +348,122 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    # 1) Validaciones básicas
     if 'file' not in request.files:
-        return jsonify({'error': 'No se seleccionó archivo'})
-    
+        return jsonify({'success': False, 'message': 'No se seleccionó archivo'}), 400
+
     file = request.files['file']
-    supplier_name = request.form.get('supplier_name', 'Proveedor Sin Nombre')
-    
+    supplier_name = request.form.get('supplier_name', '').strip() or 'Proveedor Sin Nombre'
+
     if file.filename == '':
-        return jsonify({'error': 'No se seleccionó archivo'})
-    
-    if file and file.filename.lower().endswith(('.xlsx', '.xls')):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        
-        try:
-            file.save(filepath)
-            
-            # Procesar el archivo
-            products, debug_info = processor.process_excel_file(filepath, supplier_name)
-            
-            if products:
-                # Guardar en memoria
-                price_lists[supplier_name] = {
-                    'filename': filename,
-                    'upload_date': datetime.now().isoformat(),
-                    'products': products,
-                    'total_products': len(products),
-                    'debug_info': debug_info
-                }
-                
-                return jsonify({
-                    'success': True,
-                    'message': f'Archivo procesado exitosamente. {len(products)} productos cargados.',
-                    'supplier': supplier_name,
-                    'total_products': len(products),
-                    'debug_info': debug_info[:5]  # Solo mostrar los primeros 5 items de debug
-                })
-            else:
-                return jsonify({
-                    'error': 'No se pudieron extraer productos del archivo',
-                    'debug_info': debug_info
-                })
-                
-        except Exception as e:
+        return jsonify({'success': False, 'message': 'No se seleccionó archivo'}), 400
+
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'message': 'Tipo de archivo no soportado. Use .xlsx o .xls'}), 400
+
+    # 2) Guardar temporalmente
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    try:
+        file.save(filepath)
+
+        # 3) Procesar Excel → obtener productos
+        products, debug_info = processor.process_excel_file(filepath, supplier_name)
+
+        if not products:
             return jsonify({
-                'error': f'Error procesando archivo: {str(e)}',
-                'debug_info': [f'Error general: {str(e)}']
-            })
-        finally:
-            # Limpiar archivo temporal
-            try:
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-            except:
-                pass
-    else:
-        return jsonify({'error': 'Tipo de archivo no soportado. Use .xlsx o .xls'})
+                'success': False,
+                'message': 'No se pudieron extraer productos del archivo',
+                'debug_info': debug_info
+            }), 200
+
+        # 4) (Opcional) Guardar en memoria para tu UI actual
+        price_lists[supplier_name] = {
+            'products': products,
+            'filename': filename,
+            'upload_date': datetime.now().isoformat(),
+            'total_products': len(products),
+            'debug_info': debug_info
+        }
+
+        # 5) Guardar en MySQL (SOBREESCRIBE por proveedor)
+        try:
+            guardar_productos_en_bd(supplier_name, products)
+            db_status = 'OK'
+        except Exception as db_err:
+            db_status = f'ERROR DB: {db_err}'
+            # no cortamos la respuesta para que puedas ver el error y debuggear
+
+        # 6) Respuesta
+        return jsonify({
+            'success': True,
+            'message': f'Archivo procesado. {len(products)} productos cargados.',
+            'supplier': supplier_name,
+            'total_products': len(products),
+            'db_status': db_status,
+            'debug_info': debug_info[:5]  # muestra solo un poco de diagnóstico
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error procesando archivo: {str(e)}',
+            'debug_info': [f'Error general: {str(e)}']
+        }), 500
+
+    finally:
+        # 7) Limpiar archivo temporal siempre
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except:
+            pass
 
 @app.route('/search')
+@login_required
 def search_products():
-    query = request.args.get('q', '').lower().strip()
-    
-    if not query:
+    q = request.args.get('q','').strip()
+    if not q:
         return jsonify({'results': [], 'total': 0})
-    
-    if not price_lists:
-        return jsonify({'results': [], 'total': 0, 'message': 'No hay listas de precios cargadas'})
-    
-    # Buscar en todas las listas
-    all_results = []
-    
-    for supplier, data in price_lists.items():
-        for product in data['products']:
-            if query in product['product'].lower():
-                all_results.append(product)
-    
-    # Ordenar por precio (menor a mayor)
-    all_results.sort(key=lambda x: x['price'])
-    
-    # Agregar información adicional
-    for result in all_results:
-        result['price_formatted'] = f"${result['price']:,.2f}"
-    
-    return jsonify({
-        'results': all_results,
-        'total': len(all_results),
-        'query': query,
-        'suppliers_count': len(price_lists)
-    })
+    filas = buscar_productos_bd(q, 300)
+    results = [{
+        'product': r['producto'],
+        'price': float(r['precio']),
+        'price_formatted': f"${float(r['precio']):,.2f}",
+        'supplier': r['proveedor'],
+        'location': DEFAULT_LOCATIONS.get(r['proveedor'], 'Argentina'),
+        'updated_at': (r['actualizado_a'].isoformat() if r.get('actualizado_a') else None)
+    } for r in filas]
+    return jsonify({'results': results, 'total': len(results), 'query': q,
+                    'suppliers_count': len(set(r['proveedor'] for r in filas))})
 
 @app.route('/lists')
+@login_required
 def get_loaded_lists():
-    """Obtener información de las listas cargadas"""
-    lists_info = []
-    for supplier, data in price_lists.items():
-        lists_info.append({
-            'supplier': supplier,
-            'filename': data['filename'],
-            'upload_date': data['upload_date'],
-            'total_products': data['total_products']
-        })
-    
-    return jsonify({
-        'lists': lists_info,
-        'total': len(lists_info)
-    })
+    conn = get_connection()
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT proveedor,
+                   COUNT(*)            AS total_products,
+                   MAX(actualizado_a)  AS last_update
+            FROM productos
+            GROUP BY proveedor
+            ORDER BY proveedor
+        """)
+        rows = cur.fetchall()
+        lists_info = [{
+            'supplier': r['proveedor'],
+            'filename': r['proveedor'] + '.xlsx',  # opcional (no guardamos el real)
+            'upload_date': (r['last_update'].isoformat() if r['last_update'] else None),
+            'total_products': int(r['total_products'])
+        } for r in rows]
+        return jsonify({'lists': lists_info, 'total': len(lists_info)})
+    finally:
+        conn.close()
+
+
 
 @app.route('/clear')
 def clear_lists():
@@ -516,9 +553,74 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",      # Cambiá si tu servidor MySQL no es local
         user="root",           # Usuario de MySQL
-        password="12345678",# Contraseña de MySQL
+        password="",# Contraseña de MySQL
         database="login_db"    # Base de datos creada
     )
+
+import re
+from datetime import datetime
+
+def normalizar_texto(s: str) -> str:
+    return re.sub(r'\s+', ' ', str(s).strip().lower())
+
+def guardar_productos_en_bd(proveedor: str, productos: list[dict]):
+    """
+    Sobrescribe todos los productos de 'proveedor' con los nuevos.
+    productos: [{'product': str, 'price': float, ...}, ...]
+    """
+    conn = get_connection()
+    try:
+        conn.start_transaction()
+        cur = conn.cursor()
+
+        # 1) borrar lo anterior de ese proveedor
+        cur.execute("DELETE FROM productos WHERE proveedor=%s", (proveedor,))
+
+        # 2) insertar los nuevos
+        filas = []
+        for p in productos:
+            prod = str(p['product']).strip()
+            precio = float(p['price'])
+            filas.append((
+                proveedor,
+                prod,
+                normalizar_texto(prod),
+                precio
+            ))
+
+        if filas:
+            cur.executemany(
+                """INSERT INTO productos (proveedor, producto, producto_normalizado, precio, actualizado_a)
+                   VALUES (%s, %s, %s, %s, NOW())""",
+                filas
+            )
+
+        conn.commit()
+        print(f"[DB] {len(filas)} productos guardados para {proveedor}")
+    except Exception as e:
+        conn.rollback()
+        print("[DB ERROR] guardar_productos_en_bd:", e)
+        raise
+    finally:
+        conn.close()
+
+def buscar_productos_bd(q: str, limite: int = 300):
+    conn = get_connection()
+    try:
+        cur = conn.cursor(dictionary=True)
+        like = f"%{normalizar_texto(q)}%"
+        cur.execute(
+            """SELECT proveedor, producto, precio, actualizado_a
+               FROM productos
+               WHERE producto_normalizado LIKE %s
+               ORDER BY precio ASC
+               LIMIT %s""",
+            (like, limite)
+        )
+        return cur.fetchall()
+    finally:
+        conn.close()
+
 
 # Verifica usuario en la DB
 def get_user(username, password):
@@ -528,37 +630,74 @@ def get_user(username, password):
     user = cursor.fetchone()
     conn.close()
     return user
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
+        # Admin hardcodeado → va a index.html
+        if username == "admintios" and password == "Papagianagerli1":
+            session["user"] = username
+            session["role"] = "admin"
+            return redirect(url_for("index_pagina"))
+
+        # Resto de usuarios → valida en DB y va a indexusuario.html
         user = get_user(username, password)
         if user:
             session["user"] = username
-            return redirect(url_for("index_pagina"))   # si login OK → index
-        else:
-            flash("Usuario o contraseña incorrectos", "error")
-            return redirect(url_for("login"))
+            session["role"] = "user"
+            return redirect(url_for("index_usuario"))
 
-    # Si es GET → mostrar login
+        flash("Usuario o contraseña incorrectos", "error")
+        return redirect(url_for("login"))
+
     return render_template("login.html")
+
+
+
+
+
+@app.route("/indexusuario")
+@login_required           # <-- cualquier logueado, pero si es admin lo mando a /index
+def index_usuario():
+    if session.get("role") == "admin":
+        return redirect(url_for("index_pagina"))
+    return render_template("indexusuario.html", user=session["user"])
  
 
 
 @app.route("/index")
 def index_pagina():
     if "user" not in session:
-        return redirect(url_for("login"))   # si no hay sesión → login
+        return redirect(url_for("login"))
+    if session.get("role") != "admin":
+        return redirect(url_for("index_usuario"))
     return render_template("index.html", user=session["user"])
+
+
+@app.errorhandler(404)
+def _404_to_login(e):
+    # no interceptes estáticos ni el propio /login
+    if request.path.startswith("/static/") or request.path == "/login":
+        return e, 404
+    return redirect(url_for("login"))
 
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.pop("user", None)
-    flash("Sesión cerrada", "info")
-    return redirect(url_for("login"))
+    session.pop("user", None)              # borra la sesión
+    flash("Sesión cerrada", "info")        # opcional: mensaje
+    return redirect(url_for("login"))      # redirige al login
+
+
+@app.before_request
+def _redirect_root_to_login():
+    if request.path == "/":
+        return redirect(url_for("login"))
+ 
 
 
 
