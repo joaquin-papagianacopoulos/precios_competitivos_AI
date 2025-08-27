@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comparador de Precios - DistriSulpi</title>
+    <title>Comparador de Precios Competitivos</title>
     <style>
         * {
             margin: 0;
@@ -13,17 +13,17 @@
 
         :root {
             --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --secondary-gradient: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-            --accent-gradient: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
+            --secondary-gradient: linear-gradient(#007bff 0%, #0056b3 100%);
+            --accent-gradient: linear-gradient(135deg, #ffffffff 0%, #ffffffff 100%);
             --success-gradient: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
             --danger-gradient: linear-gradient(135deg, #ff416c 0%, #ff4757 100%);
             --dark-surface: rgba(255, 255, 255, 0.95);
             --glass-bg: rgba(255, 255, 255, 0.25);
             --glass-border: rgba(255, 255, 255, 0.18);
             --text-primary: #2c3e50;
-            --text-secondary: #6c757d;
+            --text-secondary: #ffffffff;
             --shadow-light: 0 8px 32px rgba(31, 38, 135, 0.37);
-            --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.15);
+            --shadow-heavy: 0 20px 60px rgba(255, 255, 255, 0.15);
             --border-radius: 20px;
             --transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
         }
@@ -157,7 +157,7 @@
         }
 
         .sidebar {
-            background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(145deg, #rgba(30, 30, 30, 0.95) 0%, #rgba(30, 30, 30, 0.95) 100%);
             border-left: 1px solid rgba(0, 0, 0, 0.1);
             padding: 2.5rem 2rem;
             position: relative;
@@ -280,40 +280,37 @@
             width: 100%;
             border-collapse: collapse;
             background: white;
-            border-radius: var(--border-radius);
+            border-radius: 15px;
             overflow: hidden;
-            box-shadow: var(--shadow-light);
-            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
         }
 
         .results-table th {
-            background: var(--secondary-gradient);
+            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
             color: white;
-            padding: 1.25rem 1rem;
+            padding: 15px 12px;
             text-align: left;
-            font-weight: 700;
+            font-weight: 600;
             font-size: 0.9rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            position: relative;
+            letter-spacing: 0.5px;
         }
 
         .results-table td {
-            padding: 1rem;
-            border-bottom: 1px solid #f8f9fa;
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
             vertical-align: middle;
-            transition: var(--transition);
         }
 
         .results-table tr:hover {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            transform: translateX(4px);
+            background: #f8f9fa;
+            transform: translateX(2px);
+            transition: all 0.2s ease;
         }
 
         .results-table tr:last-child td {
             border-bottom: none;
         }
-
         .product-name-cell {
             font-size: 1rem;
             font-weight: 600;
@@ -332,15 +329,11 @@
         }
 
         .supplier-cell {
-            font-weight: 600;
+            font-weight: 700;
             color: #007bff;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 0.5rem 1rem;
-            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-            border-radius: 20px;
-            display: inline-block;
+            letter-spacing: 0.3px;
         }
 
         .no-results {
@@ -348,7 +341,7 @@
             padding: 4rem 2rem;
             color: var(--text-secondary);
             font-size: 1.1rem;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.95));
             border-radius: var(--border-radius);
             margin: 2rem 0;
         }
@@ -665,24 +658,24 @@
         /* Dark mode support */
         @media (prefers-color-scheme: dark) {
             :root {
-                --dark-surface: rgba(30, 30, 30, 0.95);
-                --text-primary: #e9ecef;
-                --text-secondary: #adb5bd;
+                --dark-surface: rgba(255, 255, 255, 0.95);
+                --text-primary: #6c757d;
+                --text-secondary: #4b3b3bff;
             }
 
             .results-table {
-                background: #2c2c2c;
+                background: #ffffffff;
             }
 
             .form-input, .search-input {
-                background: #2c2c2c;
-                color: #e9ecef;
+                background: #ffffffff;
+                color: #000000ff;
                 border-color: #495057;
             }
 
             .upload-form, .list-item, .stats-section {
-                background: #2c2c2c;
-                border-color: #495057;
+                background: #ffffffff;
+                border-color: #495057;  
             }
         }
 
@@ -721,6 +714,253 @@
             background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%);
         }
     </style>
+    <script>
+        // Cargar información de listas al inicio
+        loadListsInfo();
+
+        // Manejo del formulario de upload
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const fileInput = document.getElementById('fileInput');
+            const supplierName = document.getElementById('supplierName').value;
+            
+            if (!fileInput.files[0]) {
+                showStatus('error', 'Por favor selecciona un archivo');
+                return;
+            }
+            
+            formData.append('file', fileInput.files[0]);
+            formData.append('supplier_name', supplierName);
+            
+            showStatus('info', '⏳ Procesando archivo...');
+            
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('success', '✅ ' + data.message);
+                    if (data.debug_info) {
+                        showDebug(data.debug_info);
+                    }
+                    loadListsInfo(); // Recargar info de listas
+                    
+                    // Limpiar formulario
+                    document.getElementById('uploadForm').reset();
+                    updateFileButton();
+                } else {
+                    showStatus('error', '❌ ' + (data.error || 'Error desconocido'));
+                    if (data.debug_info) {
+                        showDebug(data.debug_info);
+                    }
+                }
+            })
+            .catch(error => {
+                showStatus('error', '🔴 Error de conexión: ' + error.message);
+                console.error('Error:', error);
+            });
+        });
+
+        // Búsqueda con Enter
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchProducts();
+            }
+        });
+
+        // Actualizar botón de archivo cuando se selecciona
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            updateFileButton();
+        });
+
+        function updateFileButton() {
+            const fileInput = document.getElementById('fileInput');
+            const button = document.querySelector('.file-input-button');
+            
+            if (fileInput.files[0]) {
+                button.innerHTML = `📊 ${fileInput.files[0].name}`;
+                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+            } else {
+                button.innerHTML = '📊 Seleccionar Archivo';
+                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+            }
+        }
+
+        function searchProducts() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                showStatus('error', '🔍 Ingresa un término de búsqueda');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('searchResults');
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Buscando "${query}"...
+                </div>
+            `;
+
+            fetch(`/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    displayResults(data);
+                    document.getElementById('lastSearch').textContent = query;
+                })
+                .catch(error => {
+                    resultsDiv.innerHTML = `
+                        <div class="no-results">
+                            <p>❌ Error en la búsqueda: ${error.message}</p>
+                        </div>
+                    `;
+                });
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (data.total === 0) {
+                const message = data.message || `No se encontraron productos que coincidan con "${data.query}"`;
+                resultsDiv.innerHTML = `
+                    <div class="no-results">
+                        <p>🔍 ${message}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const resultsInfo = `
+                <div class="results-info">
+                    <div>📊 ${data.total} resultado(s) para "<strong>${data.query}</strong>"</div>
+                </div>
+            `;
+
+            const tableHeader = `
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Producto</th>
+                            <th style="width: 25%;">Precio</th>
+                            <th style="width: 25%;">Mayorista</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            const tableRows = data.results.map(product => `
+                <tr>
+                    <td class="product-name-cell">${product.product}</td>
+                    <td class="price-cell">${product.price_formatted}</td>
+                    <td class="supplier-cell">${product.supplier}</td>
+                </tr>
+            `).join('');
+
+            const tableFooter = `
+                    </tbody>
+                </table>
+            `;
+
+            resultsDiv.innerHTML = resultsInfo + tableHeader + tableRows + tableFooter;
+        }
+
+        function loadListsInfo() {
+            fetch('/lists')
+                .then(response => response.json())
+                .then(data => {
+                    const listsDiv = document.getElementById('loadedLists');
+                    if (data.total === 0) {
+                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
+                        updateStats(0, 0);
+                        return;
+                    }
+
+                    let totalProducts = 0;
+                    const html = data.lists.map(list => {
+                        totalProducts += list.total_products;
+                        return `
+                            <div class="list-item">
+                                <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
+                                <div class="list-name">${list.supplier}</div>
+                                <div class="list-info">
+                                    ${list.total_products} productos<br>
+                                    <small>Archivo: ${list.filename}</small>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    listsDiv.innerHTML = html;
+                    updateStats(data.total, totalProducts);
+                })
+                .catch(error => console.error('Error cargando listas:', error));
+        }
+
+        function updateStats(totalLists, totalProducts) {
+            document.getElementById('totalLists').textContent = totalLists;
+            document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
+        }
+
+        function clearLists() {
+            if (confirm('¿Estás seguro de eliminar TODAS las listas cargadas?')) {
+                fetch('/clear')
+                    .then(response => response.json())
+                    .then(data => {
+                        showStatus('success', '🗑️ ' + data.message);
+                        loadListsInfo();
+                        document.getElementById('searchResults').innerHTML = `
+                            <div class="no-results">
+                                <p>🗑️ Todas las listas han sido eliminadas</p>
+                                <p style="margin-top: 10px;">Carga nuevos archivos para comenzar</p>
+                            </div>
+                        `;
+                        document.getElementById('searchInput').value = '';
+                        document.getElementById('lastSearch').textContent = '-';
+                    });
+            }
+        }
+
+        function removeList(supplier) {
+            if (confirm(`¿Eliminar lista de ${supplier}?`)) {
+                fetch(`/remove_list/${encodeURIComponent(supplier)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        showStatus(data.success ? 'success' : 'error', 
+                                 data.success ? '✅ ' + data.message : '❌ ' + data.message);
+                        loadListsInfo();
+                        
+                        // Si había una búsqueda activa, repetirla
+                        const currentSearch = document.getElementById('searchInput').value.trim();
+                        if (currentSearch) {
+                            setTimeout(() => searchProducts(), 500);
+                        }
+                    });
+            }
+        }
+
+        function showStatus(type, message) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
+            
+            // Auto-limpiar después de 5 segundos
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        function showDebug(debugInfo) {
+            const statusDiv = document.getElementById('uploadStatus');
+            let debugHtml = '<div class="debug-info"><strong>🔧 Información de debug:</strong><br>';
+            debugInfo.forEach(info => {
+                debugHtml += info + '<br>';
+            });
+            debugHtml += '</div>';
+            statusDiv.innerHTML += debugHtml;
+        }
+    </script>
 </head>
 <body>
     <div class="logout-wrap">
@@ -734,9 +974,9 @@
 
     <div class="container">
         <div class="header">
-            <div class="ai-badge">🚚 DistriSulpi</div>
+            <div class="ai-badge">🚚 Papagianacopoulos</div>
             <h1>🛍️ Comparador de Precios</h1>
-            <p>Sistema inteligente para mayoristas</p>
+            <p>Sistema inteligente para comerciantes</p>
         </div>
 
         <div class="main-content">
@@ -774,13 +1014,13 @@
                         📋 Listas Cargadas
                     </h4>
                     <div id="loadedLists">
-                        <p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>
+                        <p style="color: #ffffffff; text-align: center; padding: 20px;">No hay listas cargadas :(</p>
                     </div>
                 </div>
 
                 <!-- Estadísticas -->
                 <div class="stats-section">
-                    <h4 style="margin-bottom: 15px; color: #2c3e50;">📊 Estadísticas</h4>
+                    <h4 style="margin-bottom: 15px; color: #3a3737ff;">📊 Estadísticas</h4>
                     <div class="stat-item">
                         <span class="stat-label">Total listas:</span>
                         <span class="stat-value" id="totalLists">0</span>

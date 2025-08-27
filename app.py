@@ -553,7 +553,7 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",      # Cambiá si tu servidor MySQL no es local
         user="root",           # Usuario de MySQL
-        password="",# Contraseña de MySQL
+        password="12345678",# Contraseña de MySQL
         database="login_db"    # Base de datos creada
     )
 
