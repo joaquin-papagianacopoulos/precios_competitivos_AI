@@ -378,102 +378,6 @@ class PriceListProcessor:
                     pass
 
 
-def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
-    """Genera un PDF de pedido por proveedor."""
-    pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
-    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
-
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        spaceAfter=20,
-        textColor=colors.black,
-        alignment=1
-    )
-
-    story = []
-    story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
-    story.append(Spacer(1, 20))
-
-    business_info_text = f"""
-    <b>INFORMACIÓN DEL COMERCIO:</b><br/>
-    Comercio: {business_data.get('business_name', 'N/A')}<br/>
-    Dirección de Entrega: {business_data.get('address', 'N/A')}<br/>
-    Teléfono: {business_data.get('phone', 'N/A')}<br/>
-    Email: {business_data.get('email', 'N/A')}<br/>
-    """
-    story.append(Paragraph(business_info_text, styles['Normal']))
-    story.append(Spacer(1, 20))
-
-    story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
-    story.append(Spacer(1, 20))
-
-    table_data = [['Producto', 'Cantidad', 'Precio Unit.', 'Subtotal']]
-    total = 0
-    for item in items:
-        quantity = item['quantity']
-        price = item['price']
-        subtotal = quantity * price
-        total += subtotal
-        table_data.append([item['product'], str(quantity), f"${price:,.2f}", f"${subtotal:,.2f}"])
-
-    table_data.append(['', '', 'TOTAL:', f"${total:,.2f}"])
-
-    table = Table(table_data, colWidths=[3*inch, 1*inch, 1.2*inch, 1.3*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-
-    story.append(table)
-    story.append(Spacer(1, 30))
-
-    story.append(Paragraph("<b>DATOS DEL PROVEEDOR:</b>", styles['Heading2']))
-    supplier_info_text = f"""
-    Proveedor: {supplier_name}<br/>
-    Dirección: {DEFAULT_LOCATIONS.get(supplier_name, 'N/A')}<br/>
-    """
-    story.append(Paragraph(supplier_info_text, styles['Normal']))
-
-    doc.build(story)
-    return pdf_path
-
-
-def create_whatsapp_message(supplier_name, items, business_data, total):
-    """Arma el texto para WhatsApp del pedido."""
-    message = f"""🛒 *NUEVO PEDIDO - {business_data.get('business_name', 'Comercio')}*
-
-📍 *Datos de Entrega:*
-• Comercio: {business_data.get('business_name', 'N/A')}
-• Dirección: {business_data.get('address', 'N/A')}
-• Teléfono: {business_data.get('phone', 'N/A')}
-• Email: {business_data.get('email', 'N/A')}
-
-📦 *Productos Solicitados:*
-"""
-    for item in items:
-        subtotal = item['quantity'] * item['price']
-        message += (
-            f"• {item['product']}\n"
-            f"  Cantidad: {item['quantity']}\n"
-            f"  Precio: ${item['price']:,.2f} c/u\n"
-            f"  Subtotal: ${subtotal:,.2f}\n\n"
-        )
-
-    message += f"💰 *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
-    message += f"📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
-    message += "Por favor confirme disponibilidad y tiempo de entrega. ¡Gracias!"
-    return message
 
 
 
@@ -710,71 +614,6 @@ def clear_cart():
     return jsonify({'success': True, 'message': 'Carrito limpiado'})
 
 
-@app.route('/cart/generate_pdfs', methods=['POST'])
-@login_required
-def generate_pdfs():
-    user = session['user']
-    if user not in business_data:
-        return jsonify({'error': 'Primero complete la información del comercio'}), 400
-    if user not in user_carts or not user_carts[user]:
-        return jsonify({'error': 'Carrito vacío'}), 400
-
-    cart = user_carts[user]
-    biz = business_data[user]
-
-    # agrupar por proveedor
-    suppliers = {}
-    for item in cart:
-        suppliers.setdefault(item.get('supplier', 'Desconocido'), []).append(item)
-
-    pdfs_generated = []
-    whatsapp_links = []
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    for supplier_name, items in suppliers.items():
-        pdf_filename = f"pedido_{supplier_name.replace(' ', '_')}_{user}_{timestamp}.pdf"
-        pdf_path = generate_pdf_for_supplier(supplier_name, items, biz, pdf_filename)
-
-        total = sum(i['quantity'] * i['price'] for i in items)
-        wa_msg = create_whatsapp_message(supplier_name, items, biz, total)
-        phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # fallback
-        wa_url = f"https://wa.me/{phone.replace('+', '')}?text={urllib.parse.quote(wa_msg)}"
-
-        pdfs_generated.append({
-            'supplier': supplier_name,
-            'filename': pdf_filename,
-            'total': total,
-            'total_formatted': f"${total:,.2f}",
-            'items_count': len(items),
-            'pdf_path': pdf_path
-        })
-        whatsapp_links.append({
-            'supplier': supplier_name,
-            'phone': phone,
-            'url': wa_url,
-            'total': total,
-            'total_formatted': f"${total:,.2f}"
-        })
-
-    return jsonify({
-        'success': True,
-        'pdfs': pdfs_generated,
-        'whatsapp_links': whatsapp_links,
-        'total_suppliers': len(suppliers),
-        'message': f'Se generaron {len(pdfs_generated)} PDFs'
-    })
-
-@app.route('/download_pdf/<filename>')
-@login_required
-def download_pdf(filename):
-    try:
-        return send_file(
-            os.path.join(app.config['PDFS_FOLDER'], filename),
-            as_attachment=True,
-            download_name=filename
-        )
-    except Exception as e:
-        return jsonify({'error': f'Error descargando archivo: {str(e)}'}), 500
 
 
 
@@ -1036,7 +875,339 @@ def _redirect_root_to_login():
         return redirect(url_for("login"))
  
 
+@app.route('/business/setup', methods=['GET', 'POST'])
+@login_required
+def business_setup():
+    """Modal/página para configurar datos del negocio antes de generar PDFs"""
+    user = session['user']
+    if request.method == 'POST':
+        data = request.get_json()
+        business_data[user] = {
+            'business_name': data.get('business_name', '').strip(),
+            'address': data.get('address', '').strip(),
+            'phone': data.get('phone', '').strip(),
+            'email': data.get('email', '').strip(),
+            'contact_person': data.get('contact_person', '').strip()
+        }
+        return jsonify({'success': True, 'message': 'Datos del negocio guardados'})
+    
+    return jsonify(business_data.get(user, {}))
 
+# === MEJORA EN LA GENERACIÓN DE PDFS ===
+def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
+    """Genera un PDF de pedido por proveedor - MEJORADO"""
+    pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
+    doc = SimpleDocTemplate(pdf_path, pagesize=letter, topMargin=50, bottomMargin=50)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        spaceAfter=30,
+        textColor=colors.darkblue,
+        alignment=1,
+        fontName='Helvetica-Bold'
+    )
+    
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=15,
+        textColor=colors.black,
+        fontName='Helvetica-Bold'
+    )
+
+    story = []
+    
+    # Título principal
+    story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
+    story.append(Spacer(1, 20))
+
+    # Información del comercio
+    story.append(Paragraph("DATOS DEL COMERCIO", header_style))
+    business_info_text = f"""
+    <b>Comercio:</b> {business_data.get('business_name', 'N/A')}<br/>
+    <b>Persona de Contacto:</b> {business_data.get('contact_person', 'N/A')}<br/>
+    <b>Dirección de Entrega:</b> {business_data.get('address', 'N/A')}<br/>
+    <b>Teléfono:</b> {business_data.get('phone', 'N/A')}<br/>
+    <b>Email:</b> {business_data.get('email', 'N/A')}<br/>
+    """
+    story.append(Paragraph(business_info_text, styles['Normal']))
+    story.append(Spacer(1, 25))
+
+    # Fecha del pedido
+    story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Paragraph(f"<b>Número de Pedido:</b> {datetime.now().strftime('%Y%m%d%H%M%S')}", styles['Normal']))
+    story.append(Spacer(1, 25))
+
+    # Tabla de productos
+    story.append(Paragraph("DETALLE DEL PEDIDO", header_style))
+    
+    table_data = [['Producto', 'Cantidad', 'Precio Unitario', 'Subtotal']]
+    total = 0
+    
+    for item in items:
+        quantity = item['quantity']
+        price = item['price']
+        subtotal = quantity * price
+        total += subtotal
+        table_data.append([
+            Paragraph(item['product'], styles['Normal']),
+            str(quantity),
+            f"${price:,.2f}",
+            f"${subtotal:,.2f}"
+        ])
+
+    # Fila de total
+    table_data.append(['', '', Paragraph('<b>TOTAL:</b>', styles['Normal']), Paragraph(f'<b>${total:,.2f}</b>', styles['Normal'])])
+
+    table = Table(table_data, colWidths=[3.5*inch, 0.8*inch, 1.2*inch, 1.2*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.navy),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -2), 'LEFT'),  # Align product names to left
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightblue),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+
+    story.append(table)
+    story.append(Spacer(1, 30))
+
+    # Información del proveedor
+    story.append(Paragraph("DATOS DEL PROVEEDOR", header_style))
+    supplier_location = DEFAULT_LOCATIONS.get(supplier_name, 'Ubicación no especificada')
+    supplier_phone = SUPPLIER_PHONES.get(supplier_name, 'Teléfono no disponible')
+    
+    supplier_info_text = f"""
+    <b>Proveedor:</b> {supplier_name}<br/>
+    <b>Dirección:</b> {supplier_location}<br/>
+    <b>Teléfono:</b> {supplier_phone}<br/>
+    """
+    story.append(Paragraph(supplier_info_text, styles['Normal']))
+    story.append(Spacer(1, 20))
+
+    # Notas adicionales
+    story.append(Paragraph("NOTAS", header_style))
+    notes_text = """
+    • Por favor confirme disponibilidad de todos los productos<br/>
+    • Solicite tiempo estimado de entrega<br/>
+    • Verifique condiciones de pago<br/>
+    • Este pedido está sujeto a confirmación
+    """
+    story.append(Paragraph(notes_text, styles['Normal']))
+
+    doc.build(story)
+    return pdf_path
+
+# === MEJORA EN EL MENSAJE DE WHATSAPP ===
+def create_whatsapp_message(supplier_name, items, business_data, total):
+    """Arma el texto para WhatsApp del pedido - MEJORADO"""
+    contact_person = business_data.get('contact_person', business_data.get('business_name', 'Cliente'))
+    
+    message = f"""🛒 *NUEVO PEDIDO*
+
+👤 *De:* {contact_person}
+🏢 *Comercio:* {business_data.get('business_name', 'N/A')}
+
+📍 *Datos de Entrega:*
+• Dirección: {business_data.get('address', 'N/A')}
+• Teléfono: {business_data.get('phone', 'N/A')}
+• Email: {business_data.get('email', 'N/A')}
+
+📦 *Productos Solicitados:*
+"""
+    
+    for i, item in enumerate(items, 1):
+        subtotal = item['quantity'] * item['price']
+        message += f"{i}. *{item['product']}*\n"
+        message += f"   📦 Cantidad: {item['quantity']}\n"
+        message += f"   💰 Precio: ${item['price']:,.2f} c/u\n"
+        message += f"   💵 Subtotal: ${subtotal:,.2f}\n\n"
+
+    message += f"💰 *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
+    message += f"📅 *Fecha:* {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    message += f"🔢 *Nº Pedido:* {datetime.now().strftime('%Y%m%d%H%M%S')}\n\n"
+    
+    message += "❓ *Por favor confirme:*\n"
+    message += "• ✅ Disponibilidad de productos\n"
+    message += "• 🚚 Tiempo de entrega\n"
+    message += "• 💳 Condiciones de pago\n"
+    message += "• 📋 Cualquier modificación necesaria\n\n"
+    
+    message += "¡Gracias por su atención! 🙏"
+    
+    return message
+
+# === ENDPOINT MEJORADO PARA GENERAR PDFS ===
+@app.route('/cart/generate_pdfs', methods=['POST'])
+@login_required
+def generate_pdfs():
+    user = session['user']
+    
+    # Verificar que hay datos del negocio
+    if user not in business_data:
+        return jsonify({
+            'error': 'Datos del negocio requeridos',
+            'show_business_form': True,
+            'message': 'Primero complete la información de su comercio'
+        }), 400
+    
+    # Validar que los datos obligatorios estén completos
+    biz = business_data[user]
+    required_fields = ['business_name', 'address', 'phone']
+    missing_fields = [field for field in required_fields if not biz.get(field, '').strip()]
+    
+    if missing_fields:
+        return jsonify({
+            'error': 'Datos incompletos',
+            'missing_fields': missing_fields,
+            'show_business_form': True,
+            'message': f'Complete los siguientes campos: {", ".join(missing_fields)}'
+        }), 400
+    
+    if user not in user_carts or not user_carts[user]:
+        return jsonify({'error': 'Carrito vacío'}), 400
+
+    cart = user_carts[user]
+
+    # Agrupar por proveedor
+    suppliers = {}
+    for item in cart:
+        suppliers.setdefault(item.get('supplier', 'Proveedor Desconocido'), []).append(item)
+
+    pdfs_generated = []
+    whatsapp_links = []
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    try:
+        for supplier_name, items in suppliers.items():
+            # Generar nombre de archivo único
+            safe_supplier = supplier_name.replace(' ', '_').replace('/', '_')
+            safe_user = user.replace(' ', '_').replace('/', '_')
+            pdf_filename = f"pedido_{safe_supplier}_{safe_user}_{timestamp}.pdf"
+            
+            # Generar PDF
+            pdf_path = generate_pdf_for_supplier(supplier_name, items, biz, pdf_filename)
+            
+            # Calcular total
+            total = sum(i['quantity'] * i['price'] for i in items)
+            
+            # Generar mensaje y link de WhatsApp
+            wa_msg = create_whatsapp_message(supplier_name, items, biz, total)
+            phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # fallback
+            
+            # Crear URL de WhatsApp con mensaje
+            wa_url = f"https://wa.me/{phone.replace('+', '')}?text={urllib.parse.quote(wa_msg)}"
+
+            pdfs_generated.append({
+                'supplier': supplier_name,
+                'filename': pdf_filename,
+                'total': total,
+                'total_formatted': f"${total:,.2f}",
+                'items_count': len(items),
+                'pdf_path': pdf_path,
+                'phone': phone
+            })
+            
+            whatsapp_links.append({
+                'supplier': supplier_name,
+                'phone': phone,
+                'url': wa_url,
+                'total': total,
+                'total_formatted': f"${total:,.2f}",
+                'message_preview': wa_msg[:100] + '...' if len(wa_msg) > 100 else wa_msg
+            })
+
+        return jsonify({
+            'success': True,
+            'pdfs': pdfs_generated,
+            'whatsapp_links': whatsapp_links,
+            'total_suppliers': len(suppliers),
+            'message': f'Se generaron {len(pdfs_generated)} PDFs exitosamente',
+            'business_info': biz  # Para confirmar en el frontend
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error generando PDFs: {str(e)}',
+            'message': 'Ocurrió un error al generar los documentos'
+        }), 500
+
+# === ENDPOINT PARA VALIDAR DATOS DEL NEGOCIO ===
+@app.route('/business/validate', methods=['POST'])
+@login_required
+def validate_business_data():
+    """Valida y guarda los datos del negocio"""
+    user = session['user']
+    data = request.get_json()
+    
+    # Validaciones
+    errors = []
+    if not data.get('business_name', '').strip():
+        errors.append('Nombre del comercio es obligatorio')
+    if not data.get('address', '').strip():
+        errors.append('Dirección es obligatoria')
+    if not data.get('phone', '').strip():
+        errors.append('Teléfono es obligatorio')
+    
+    if errors:
+        return jsonify({
+            'success': False,
+            'errors': errors,
+            'message': 'Corrija los siguientes errores'
+        }), 400
+    
+    # Guardar datos
+    business_data[user] = {
+        'business_name': data.get('business_name', '').strip(),
+        'address': data.get('address', '').strip(), 
+        'phone': data.get('phone', '').strip(),
+        'email': data.get('email', '').strip(),
+        'contact_person': data.get('contact_person', '').strip()
+    }
+    
+    return jsonify({
+        'success': True,
+        'message': 'Datos del negocio guardados correctamente',
+        'data': business_data[user]
+    })
+
+# === ENDPOINT MEJORADO PARA DESCARGAR PDF ===
+@app.route('/download_pdf/<filename>')
+@login_required
+def download_pdf(filename):
+    """Descarga un PDF generado"""
+    try:
+        pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
+        
+        if not os.path.exists(pdf_path):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+            
+        # Verificar que el archivo pertenece al usuario actual (opcional)
+        user = session['user']
+        safe_user = user.replace(' ', '_').replace('/', '_')
+        if safe_user not in filename:
+            return jsonify({'error': 'Acceso denegado'}), 403
+            
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        return jsonify({'error': f'Error descargando archivo: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
