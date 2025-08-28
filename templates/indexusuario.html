@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comparador de Precios Competitivos</title>
+    <title>Comparador de Precios - Usuario</title>
     <style>
         * {
             margin: 0;
@@ -14,14 +14,14 @@
         :root {
             --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             --secondary-gradient: linear-gradient(#007bff 0%, #0056b3 100%);
-            --accent-gradient: linear-gradient(135deg, #ffffffff 0%, #ffffffff 100%);
+            --accent-gradient: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             --success-gradient: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
             --danger-gradient: linear-gradient(135deg, #ff416c 0%, #ff4757 100%);
             --dark-surface: rgba(255, 255, 255, 0.95);
             --glass-bg: rgba(255, 255, 255, 0.25);
             --glass-border: rgba(255, 255, 255, 0.18);
             --text-primary: #2c3e50;
-            --text-secondary: #ffffffff;
+            --text-secondary: #6c757d;
             --shadow-light: 0 8px 32px rgba(31, 38, 135, 0.37);
             --shadow-heavy: 0 20px 60px rgba(255, 255, 255, 0.15);
             --border-radius: 20px;
@@ -123,7 +123,7 @@
             z-index: 1;
         }
 
-        .ai-badge {
+        .user-badge {
             position: absolute;
             top: 1.5rem;
             right: 1.5rem;
@@ -137,12 +137,6 @@
             letter-spacing: 0.5px;
             box-shadow: var(--shadow-light);
             z-index: 2;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
         }
 
         .main-content {
@@ -157,7 +151,7 @@
         }
 
         .sidebar {
-            background: linear-gradient(145deg, #rgba(30, 30, 30, 0.95) 0%, #rgba(30, 30, 30, 0.95) 100%);
+            background: linear-gradient(145deg, rgba(248, 249, 250, 0.95) 0%, rgba(233, 236, 239, 0.95) 100%);
             border-left: 1px solid rgba(0, 0, 0, 0.1);
             padding: 2.5rem 2rem;
             position: relative;
@@ -249,6 +243,10 @@
             color: white;
         }
 
+        .clear-btn {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
 
         .search-btn:hover, .clear-btn:hover {
             transform: translateY(-3px);
@@ -307,6 +305,7 @@
         .results-table tr:last-child td {
             border-bottom: none;
         }
+
         .product-name-cell {
             font-size: 1rem;
             font-weight: 600;
@@ -330,6 +329,26 @@
             font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+        }
+
+        .add-to-cart-btn {
+            background: var(--success-gradient);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .add-to-cart-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
         }
 
         .no-results {
@@ -364,123 +383,261 @@
             100% { transform: rotate(360deg); }
         }
 
-        .loaded-lists {
-            margin-bottom: 2rem;
-        }
-
-        .list-item {
+        /* CARRITO STYLES */
+        .cart-section {
             background: white;
-            padding: 1.25rem;
-            margin-bottom: 1rem;
             border-radius: 12px;
-            border: 1px solid #e9ecef;
-            position: relative;
-            transition: var(--transition);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .list-item:hover {
-            transform: translateX(8px);
-            box-shadow: var(--shadow-light);
-        }
-
-        .list-name {
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 0.5rem;
-            font-size: 1.1rem;
-        }
-
-        .list-info {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            line-height: 1.5;
-        }
-
-
-        .stats-section {
-            background: white;
             padding: 1.5rem;
-            border-radius: 12px;
-            border: 1px solid #e9ecef;
+            margin-bottom: 2rem;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
         }
 
-        .stat-item {
+        .cart-header {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             margin-bottom: 1rem;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #f8f9fa;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f8f9fa;
         }
 
-        .stat-item:last-child {
+        .cart-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .cart-count {
+            background: var(--danger-gradient);
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .cart-item:last-child {
             border-bottom: none;
+        }
+
+        .cart-item-info {
+            flex: 1;
+        }
+
+        .cart-item-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .cart-item-details {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .cart-item-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .cart-item-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .quantity-btn {
+            background: var(--secondary-gradient);
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .quantity-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .quantity-input {
+            width: 40px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 0.25rem;
+            font-size: 0.8rem;
+        }
+
+        .remove-item-btn {
+            background: var(--danger-gradient);
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .remove-item-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
+        }
+
+        .cart-total {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: center;
+        }
+
+        .cart-total-amount {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .cart-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .cart-btn {
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .generate-pdf-btn {
+            background: var(--success-gradient);
+            color: white;
+        }
+
+        .clear-cart-btn {
+            background: var(--danger-gradient);
+            color: white;
+        }
+
+        .cart-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        /* PDF RESULTS */
+        .pdf-results {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e9ecef;
+        }
+
+        .pdf-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .pdf-item:last-child {
             margin-bottom: 0;
         }
 
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-            font-weight: 500;
+        .pdf-info {
+            flex: 1;
         }
 
-        .stat-value {
+        .pdf-supplier {
             font-weight: 700;
             color: var(--text-primary);
-            font-size: 1.1rem;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
         }
 
-        .status-message {
-            padding: 1.25rem;
-            border-radius: 12px;
-            margin: 1rem 0;
-            font-weight: 600;
-            animation: slideDown 0.5s ease-out;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .status-success {
-            background: linear-gradient(135deg, #d4edda 0%, #a8e6cf 100%);
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            box-shadow: 0 4px 15px rgba(21, 87, 36, 0.2);
-        }
-
-        .status-error {
-            background: linear-gradient(135deg, #f8d7da 0%, #ffb3ba 100%);
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            box-shadow: 0 4px 15px rgba(114, 28, 36, 0.2);
-        }
-
-        .status-info {
-            background: linear-gradient(135deg, #d1ecf1 0%, #a8e6cf 100%);
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            box-shadow: 0 4px 15px rgba(12, 84, 96, 0.2);
-        }
-
-        .debug-info {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border: 1px solid #dee2e6;
-            border-radius: 12px;
-            padding: 1.25rem;
-            margin: 1rem 0;
-            font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+        .pdf-details {
             font-size: 0.85rem;
-            color: var(--text-primary);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            color: var(--text-secondary);
+        }
+
+        .pdf-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .download-btn, .whatsapp-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transition: var(--transition);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .download-btn {
+            background: var(--secondary-gradient);
+            color: white;
+        }
+
+        .whatsapp-btn {
+            background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+            color: white;
+        }
+
+        .download-btn:hover, .whatsapp-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
         .logout-wrap {
@@ -512,9 +669,41 @@
             box-shadow: 0 12px 35px rgba(255, 65, 108, 0.4);
         }
 
-        .logout-icon {
-            font-size: 1.1rem;
-            line-height: 1;
+        .status-message {
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-weight: 600;
+            animation: slideDown 0.5s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-success {
+            background: linear-gradient(135deg, #d4edda 0%, #a8e6cf 100%);
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-error {
+            background: linear-gradient(135deg, #f8d7da 0%, #ffb3ba 100%);
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-info {
+            background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+            color: #0c5460;
+            border: 1px solid #bee5eb;
         }
 
         /* Responsive Design */
@@ -555,7 +744,7 @@
                 padding: 2rem 1.5rem;
             }
 
-            .ai-badge {
+            .user-badge {
                 position: static;
                 display: inline-block;
                 margin-bottom: 1rem;
@@ -570,172 +759,103 @@
                 gap: 0.75rem;
             }
 
-            .results-table {
-                font-size: 0.9rem;
-            }
-            
-            .results-table th,
-            .results-table td {
-                padding: 0.75rem 0.5rem;
+            .cart-actions {
+                grid-template-columns: 1fr;
             }
 
-            .product-name-cell {
-                font-size: 0.9rem;
+            .pdf-actions {
+                flex-direction: column;
             }
-
-            .price-cell {
-                font-size: 1.1rem;
-            }
-
-            .supplier-cell {
-                font-size: 0.8rem;
-                padding: 0.4rem 0.8rem;
-            }
-
-            .list-item:hover {
-                transform: translateX(4px);
-            }
-
-            .logout-wrap {
-                position: relative;
-                top: auto;
-                left: auto;
-                margin-bottom: 1rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .header h1 {
-                font-size: 1.8rem;
-            }
-
-            .section-title {
-                font-size: 1.2rem;
-            }
-
-            .upload-form, .stats-section {
-                padding: 1.5rem;
-            }
-
-            .results-table th,
-            .results-table td {
-                padding: 0.6rem 0.4rem;
-                font-size: 0.85rem;
-            }
-
-            .no-results {
-                padding: 2.5rem 1.5rem;
-            }
-        }
-
-        /* Dark mode support */
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --dark-surface: rgba(255, 255, 255, 0.95);
-                --text-primary: #6c757d;
-                --text-secondary: #4b3b3bff;
-            }
-
-            .results-table {
-                background: #ffffffff;
-            }
-
-            .form-input, .search-input {
-                background: #ffffffff;
-                color: #000000ff;
-                border-color: #495057;
-            }
-
-            .upload-form, .list-item, .stats-section {
-                background: #ffffffff;
-                border-color: #495057;  
-            }
-        }
-
-        /* Scroll animations */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .animate-in {
-            animation: fadeInUp 0.6s ease-out;
-        }
-
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--accent-gradient);
-            border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%);
         }
     </style>
-    <script>
-        // Cargar información de listas al inicio
-        loadListsInfo();
+</head>
+<body>
+    <div class="logout-wrap">
+        <form action="{{ url_for('logout') }}" method="post">
+            <button type="submit" class="logout-btn" title="Cerrar sesión">
+                <span>⟵</span>
+                <span>Cerrar sesión</span>
+            </button>
+        </form>
+    </div>
 
-        // Manejo del formulario de upload
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData();
-            const fileInput = document.getElementById('fileInput');
-            const supplierName = document.getElementById('supplierName').value;
-            
-            if (!fileInput.files[0]) {
-                showStatus('error', 'Por favor selecciona un archivo');
-                return;
-            }
-            
-            formData.append('file', fileInput.files[0]);
-            formData.append('supplier_name', supplierName);
-            
-            showStatus('info', '⏳ Procesando archivo...');
-            
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showStatus('success', '✅ ' + data.message);
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
-                    loadListsInfo(); // Recargar info de listas
-                    
-                    // Limpiar formulario
-                    document.getElementById('uploadForm').reset();
-                    updateFileButton();
-                } else {
-                    showStatus('error', '❌ ' + (data.error || 'Error desconocido'));
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
-                }
-            })
-            .catch(error => {
-                showStatus('error', '🔴 Error de conexión: ' + error.message);
-                console.error('Error:', error);
-            });
+    <div class="container">
+        <div class="header">
+            <div class="user-badge">👤 {{ user }}</div>
+            <h1>🛍️ Comparador de Precios</h1>
+            <p>Busca productos y arma tu pedido</p>
+        </div>
+
+        <div class="main-content">
+            <div class="left-panel">
+                <!-- Search Section -->
+                <div class="search-section">
+                    <h3 class="section-title">
+                        🔍 Buscar Productos
+                    </h3>
+                    <div class="search-container">
+                        <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos...">
+                        <div class="search-icon">🔍</div>
+                    </div>
+                    <div class="search-controls">
+                        <button class="search-btn" onclick="searchProducts()">Buscar Productos</button>
+                        <button class="clear-btn" onclick="clearSearch()">Limpiar</button>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="results-section">
+                    <div id="searchResults">
+                        <div class="no-results">
+                            <p>🔍 Busca productos para agregar a tu carrito</p>
+                            <p style="margin-top: 10px; font-size: 0.9rem; color: #28a745;">✨ Encuentra los mejores precios</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Messages -->
+                <div id="statusMessages"></div>
+
+                <!-- PDF Results -->
+                <div id="pdfResults" style="display: none;"></div>
+            </div>
+
+            <div class="sidebar">
+                <!-- Cart Section -->
+                <div class="cart-section">
+                    <div class="cart-header">
+                        <div class="cart-title">
+                            🛒 Carrito
+                            <span class="cart-count" id="cartCount">0</span>
+                        </div>
+                    </div>
+                    <div id="cartItems">
+                        <p style="text-align: center; color: #6c757d; padding: 20px;">Carrito vacío</p>
+                    </div>
+                    <div id="cartTotal" style="display: none;">
+                        <div class="cart-total">
+                            <div class="cart-total-amount" id="totalAmount">$0.00</div>
+                        </div>
+                        <div class="cart-actions">
+                            <button class="cart-btn generate-pdf-btn" onclick="generatePDFs()">
+                                📄 Generar PDFs
+                            </button>
+                            <button class="cart-btn clear-cart-btn" onclick="clearCart()">
+                                🗑️ Vaciar Carrito
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+       <script>
+        let cartData = { cart: [], total: 0, suppliers: {} };
+
+        // Cargar carrito al inicio
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCart();
         });
 
         // Búsqueda con Enter
@@ -744,24 +864,6 @@
                 searchProducts();
             }
         });
-
-        // Actualizar botón de archivo cuando se selecciona
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            updateFileButton();
-        });
-
-        function updateFileButton() {
-            const fileInput = document.getElementById('fileInput');
-            const button = document.querySelector('.file-input-button');
-            
-            if (fileInput.files[0]) {
-                button.innerHTML = `📊 ${fileInput.files[0].name}`;
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            } else {
-                button.innerHTML = '📊 Seleccionar Archivo';
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            }
-        }
 
         function searchProducts() {
             const query = document.getElementById('searchInput').value.trim();
@@ -779,15 +881,22 @@
             `;
 
             fetch(`/search?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('Datos recibidos:', data); // Debug
                     displayResults(data);
-                    document.getElementById('lastSearch').textContent = query;
                 })
                 .catch(error => {
+                    console.error('Error en búsqueda:', error);
                     resultsDiv.innerHTML = `
                         <div class="no-results">
                             <p>❌ Error en la búsqueda: ${error.message}</p>
+                            <p style="margin-top: 10px; font-size: 0.9rem;">Verifica que haya productos cargados en la base de datos</p>
                         </div>
                     `;
                 });
@@ -796,11 +905,12 @@
         function displayResults(data) {
             const resultsDiv = document.getElementById('searchResults');
             
-            if (data.total === 0) {
+            if (!data.results || data.total === 0) {
                 const message = data.message || `No se encontraron productos que coincidan con "${data.query}"`;
                 resultsDiv.innerHTML = `
                     <div class="no-results">
                         <p>🔍 ${message}</p>
+                        <p style="margin-top: 10px; font-size: 0.9rem;">Intenta con otros términos de búsqueda</p>
                     </div>
                 `;
                 return;
@@ -809,6 +919,7 @@
             const resultsInfo = `
                 <div class="results-info">
                     <div>📊 ${data.total} resultado(s) para "<strong>${data.query}</strong>"</div>
+                    <div>${data.suppliers_count || 0} proveedor(es)</div>
                 </div>
             `;
 
@@ -816,19 +927,25 @@
                 <table class="results-table">
                     <thead>
                         <tr>
-                            <th style="width: 50%;">Producto</th>
-                            <th style="width: 25%;">Precio</th>
-                            <th style="width: 25%;">Mayorista</th>
+                            <th style="width: 40%;">Producto</th>
+                            <th style="width: 20%;">Precio</th>
+                            <th style="width: 20%;">Proveedor</th>
+                            <th style="width: 20%;">Acción</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
 
-            const tableRows = data.results.map(product => `
+            const tableRows = data.results.map((product, index) => `
                 <tr>
                     <td class="product-name-cell">${product.product}</td>
                     <td class="price-cell">${product.price_formatted}</td>
                     <td class="supplier-cell">${product.supplier}</td>
+                    <td>
+                        <button class="add-to-cart-btn" onclick="addToCart('${product.id}', '${escapeHtml(product.product)}', ${product.price}, '${product.supplier}')">
+                            🛒 Agregar
+                        </button>
+                    </td>
                 </tr>
             `).join('');
 
@@ -840,171 +957,256 @@
             resultsDiv.innerHTML = resultsInfo + tableHeader + tableRows + tableFooter;
         }
 
-        function loadListsInfo() {
-            fetch('/lists')
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+        }
+
+        function addToCart(productId, productName, price, supplier) {
+            console.log('Agregando al carrito:', { productId, productName, price, supplier });
+            
+            fetch('/cart/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    product_name: productName,
+                    price: price,
+                    supplier: supplier,
+                    quantity: 1
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('success', `✅ ${productName} agregado al carrito`);
+                    loadCart(); // Recargar carrito
+                } else {
+                    showStatus('error', `❌ Error: ${data.error || 'No se pudo agregar al carrito'}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error agregando al carrito:', error);
+                showStatus('error', '❌ Error de conexión al agregar producto');
+            });
+        }
+
+        function loadCart() {
+            fetch('/cart/get')
                 .then(response => response.json())
                 .then(data => {
-                    const listsDiv = document.getElementById('loadedLists');
-                    if (data.total === 0) {
-                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
-                        updateStats(0, 0);
-                        return;
-                    }
-
-                    let totalProducts = 0;
-                    const html = data.lists.map(list => {
-                        totalProducts += list.total_products;
-                        return `
-                            <div class="list-item">
-                                <div class="list-name">${list.supplier}</div>
-                                <div class="list-info">
-                                    ${list.total_products} productos<br>
-                                    <small>Archivo: ${list.filename}</small>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-
-                    listsDiv.innerHTML = html;
-                    updateStats(data.total, totalProducts);
+                    cartData = data;
+                    updateCartDisplay();
                 })
-                .catch(error => console.error('Error cargando listas:', error));
+                .catch(error => {
+                    console.error('Error cargando carrito:', error);
+                });
         }
 
-        function updateStats(totalLists, totalProducts) {
-            document.getElementById('totalLists').textContent = totalLists;
-            document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
-        }
+        function updateCartDisplay() {
+            const cartItemsDiv = document.getElementById('cartItems');
+            const cartCountSpan = document.getElementById('cartCount');
+            const cartTotalDiv = document.getElementById('cartTotal');
+            const totalAmountSpan = document.getElementById('totalAmount');
 
-        function clearLists() {
-            if (confirm('¿Estás seguro de eliminar TODAS las listas cargadas?')) {
-                fetch('/clear')
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus('success', '🗑️ ' + data.message);
-                        loadListsInfo();
-                        document.getElementById('searchResults').innerHTML = `
-                            <div class="no-results">
-                                <p>🗑️ Todas las listas han sido eliminadas</p>
-                                <p style="margin-top: 10px;">Carga nuevos archivos para comenzar</p>
-                            </div>
-                        `;
-                        document.getElementById('searchInput').value = '';
-                        document.getElementById('lastSearch').textContent = '-';
-                    });
+            // Actualizar contador
+            cartCountSpan.textContent = cartData.cart.length;
+
+            if (cartData.cart.length === 0) {
+                cartItemsDiv.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 20px;">Carrito vacío</p>';
+                cartTotalDiv.style.display = 'none';
+                return;
             }
+
+            // Mostrar items del carrito
+            const cartItemsHtml = cartData.cart.map(item => `
+                <div class="cart-item">
+                    <div class="cart-item-info">
+                        <div class="cart-item-name">${item.product}</div>
+                        <div class="cart-item-details">
+                            ${item.supplier} • $${item.price.toFixed(2)} c/u
+                        </div>
+                    </div>
+                    <div class="cart-item-controls">
+                        <div class="quantity-control">
+                            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${item.quantity - 1})">-</button>
+                            <input type="number" class="quantity-input" value="${item.quantity}" 
+                                   onchange="updateQuantity('${item.id}', this.value)" min="1">
+                            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${item.quantity + 1})">+</button>
+                        </div>
+                        <button class="remove-item-btn" onclick="removeFromCart('${item.id}')">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+
+            cartItemsDiv.innerHTML = cartItemsHtml;
+
+            // Mostrar total
+            totalAmountSpan.textContent = cartData.total_formatted || `$${cartData.total.toFixed(2)}`;
+            cartTotalDiv.style.display = 'block';
         }
 
-        function removeList(supplier) {
-            if (confirm(`¿Eliminar lista de ${supplier}?`)) {
-                fetch(`/remove_list/${encodeURIComponent(supplier)}`)
+        function updateQuantity(productId, newQuantity) {
+            if (newQuantity < 1) {
+                removeFromCart(productId);
+                return;
+            }
+
+            fetch('/cart/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    quantity: parseInt(newQuantity)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadCart();
+                } else {
+                    showStatus('error', `❌ Error actualizando cantidad: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error actualizando cantidad:', error);
+                showStatus('error', '❌ Error de conexión');
+            });
+        }
+
+        function removeFromCart(productId) {
+            fetch('/cart/remove', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('success', '✅ Producto eliminado del carrito');
+                    loadCart();
+                } else {
+                    showStatus('error', `❌ Error: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error eliminando del carrito:', error);
+                showStatus('error', '❌ Error de conexión');
+            });
+        }
+
+        function clearCart() {
+            if (confirm('¿Estás seguro de vaciar el carrito?')) {
+                fetch('/cart/clear')
                     .then(response => response.json())
                     .then(data => {
-                        showStatus(data.success ? 'success' : 'error', 
-                                 data.success ? '✅ ' + data.message : '❌ ' + data.message);
-                        loadListsInfo();
-                        
-                        // Si había una búsqueda activa, repetirla
-                        const currentSearch = document.getElementById('searchInput').value.trim();
-                        if (currentSearch) {
-                            setTimeout(() => searchProducts(), 500);
+                        if (data.success) {
+                            showStatus('success', '🗑️ Carrito vaciado');
+                            loadCart();
+                        } else {
+                            showStatus('error', '❌ Error vaciando carrito');
                         }
+                    })
+                    .catch(error => {
+                        console.error('Error vaciando carrito:', error);
+                        showStatus('error', '❌ Error de conexión');
                     });
             }
+        }
+
+        function generatePDFs() {
+            if (cartData.cart.length === 0) {
+                showStatus('error', '❌ El carrito está vacío');
+                return;
+            }
+
+            showStatus('info', '⏳ Generando PDFs...');
+
+            fetch('/cart/generate_pdfs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('success', `✅ ${data.message}`);
+                    displayPDFResults(data);
+                } else {
+                    showStatus('error', `❌ Error: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error generando PDFs:', error);
+                showStatus('error', '❌ Error de conexión al generar PDFs');
+            });
+        }
+
+        function displayPDFResults(data) {
+            const pdfResultsDiv = document.getElementById('pdfResults');
+            
+            let html = `
+                <div class="pdf-results">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-primary);">📄 PDFs Generados (${data.pdfs.length})</h4>
+            `;
+
+            data.pdfs.forEach((pdf, index) => {
+                const whatsapp = data.whatsapp_links[index];
+                html += `
+                    <div class="pdf-item">
+                        <div class="pdf-info">
+                            <div class="pdf-supplier">${pdf.supplier}</div>
+                            <div class="pdf-details">
+                                ${pdf.items_count} productos • Total: ${pdf.total_formatted}
+                            </div>
+                        </div>
+                        <div class="pdf-actions">
+                            <a href="/download_pdf/${pdf.filename}" class="download-btn">
+                                📥 Descargar PDF
+                            </a>
+                            <a href="${whatsapp.url}" target="_blank" class="whatsapp-btn">
+                                📱 WhatsApp
+                            </a>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            pdfResultsDiv.innerHTML = html;
+            pdfResultsDiv.style.display = 'block';
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchResults').innerHTML = `
+                <div class="no-results">
+                    <p>🔍 Busca productos para agregar a tu carrito</p>
+                    <p style="margin-top: 10px; font-size: 0.9rem; color: #28a745;">✨ Encuentra los mejores precios</p>
+                </div>
+            `;
         }
 
         function showStatus(type, message) {
-            const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
+            const statusDiv = document.getElementById('statusMessages');
+            const statusHtml = `<div class="status-message status-${type}">${message}</div>`;
+            statusDiv.innerHTML = statusHtml;
             
             // Auto-limpiar después de 5 segundos
             setTimeout(() => {
                 statusDiv.innerHTML = '';
             }, 5000);
         }
-
-        function showDebug(debugInfo) {
-            const statusDiv = document.getElementById('uploadStatus');
-            let debugHtml = '<div class="debug-info"><strong>🔧 Información de debug:</strong><br>';
-            debugInfo.forEach(info => {
-                debugHtml += info + '<br>';
-            });
-            debugHtml += '</div>';
-            statusDiv.innerHTML += debugHtml;
-        }
     </script>
-</head>
-<body>
-    <div class="logout-wrap">
-        <form action="{{ url_for('logout') }}" method="post">
-            <button type="submit" class="logout-btn" title="Cerrar sesión">
-                <span class="logout-icon">⟵</span>
-                <span>Cerrar sesión</span>
-            </button>
-        </form>
-    </div>
-
-    <div class="container">
-        <div class="header">
-            <div class="ai-badge">🚚 Papagianacopoulos</div>
-            <h1>🛍️ Comparador de Precios</h1>
-            <p>Sistema inteligente para comerciantes</p>
-        </div>
-
-        <div class="main-content">
-            <div class="left-panel">
-                <!-- Search Section -->
-                <div class="search-section">
-                    <h3 class="section-title">
-                        🔍 Buscar Productos
-                    </h3>
-                    <div class="search-container">
-                        <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos en todas las listas...">
-                        <div class="search-icon">🔍</div>
-                    </div>
-                    <div class="search-controls">
-                        <button class="search-btn" onclick="searchProducts()">Buscar Productos</button>
-                    </div>
-                </div>
-
-                <!-- Results Section -->
-                <div class="results-section">
-                    <div id="searchResults">
-                        <div class="no-results">
-                            <p>🔍 Busca productos en las listas cargadas</p>
-                            <p style="margin-top: 10px; font-size: 0.9rem; color: #28a745;">✨ Sistema preparado para búsquedas inteligentes</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="sidebar">
-                <!-- Listas cargadas -->
-                <div class="loaded-lists">
-                    <h4 class="section-title">
-                        📋 Listas Cargadas
-                    </h4>
-                    <div id="loadedLists">
-                        <p style="color: #ffffffff; text-align: center; padding: 20px;">No hay listas cargadas :(</p>
-                    </div>
-                </div>
-
-                <!-- Estadísticas -->
-                <div class="stats-section">
-                    <h4 style="margin-bottom: 15px; color: #3a3737ff;">📊 Estadísticas</h4>
-                    <div class="stat-item">
-                        <span class="stat-label">Total listas:</span>
-                        <span class="stat-value" id="totalLists">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Productos totales:</span>
-                        <span class="stat-value" id="totalProducts">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Última búsqueda:</span>
-                        <span class="stat-value" id="lastSearch">-</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+</body>
+</html>

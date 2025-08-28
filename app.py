@@ -9,6 +9,17 @@ import mysql.connector
 from functools import wraps
 from flask import redirect, url_for, session, request 
 
+# === NUEVOS IMPORTS PARA CARRITO/PDF/WA ===
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+import urllib.parse
+from flask import send_file
+
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*a, **kw):
@@ -38,12 +49,26 @@ app.secret_key = "tios"
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
+# === PDFS ===
+app.config['PDFS_FOLDER'] = 'pdfs'
+
+for folder in [app.config['UPLOAD_FOLDER'], app.config.get('PDFS_FOLDER', 'pdfs')]:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+
 # Crear carpeta de uploads si no existe
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 # Almacenamiento global para las listas de precios
 price_lists = {}
+
+
+# === ESTADO CARRITO / NEGOCIO ===
+user_carts = {}     # carrito por usuario logueado
+business_data = {}  # datos del comercio por usuario
+
 
 # Ubicaciones por defecto de mayoristas
 DEFAULT_LOCATIONS = {
@@ -52,6 +77,15 @@ DEFAULT_LOCATIONS = {
     'Comercial Sur': 'Pellegrini 890, Rosario, Argentina',
     'Proveedor Express': 'Florida 456, Buenos Aires, Argentina'
 }
+
+# === TELÉFONOS PARA WHATSAPP (dummy/ejemplo) ===
+SUPPLIER_PHONES = {
+    'Gallesur': '+541156649404',
+    'Distribuidora Norte': '+5491123456790',
+    'Comercial Sur': '+5491123456791',
+    'Proveedor Express': '+5491123456792'
+}
+
 
 class PriceListProcessor:
     def __init__(self):
@@ -290,13 +324,17 @@ class PriceListProcessor:
                                         print(f"   ✅ PRECIO ACEPTADO: {price}")
                                 
                                 if price is not None and price > 0:
+
                                     product_info = {
                                         'product': str(product).strip(),
                                         'price': price,
                                         'supplier': supplier_name,
                                         'sheet': sheet_name,
-                                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina')
+                                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina'),
+                                        'id': f"{supplier_name}_{sheet_name}_{idx}_{products_in_sheet}"
                                     }
+
+
                                     all_products.append(product_info)
                                     products_in_sheet += 1
                                 elif pd.notna(price_raw):
@@ -338,6 +376,107 @@ class PriceListProcessor:
                     excel_file.close()
                 except:
                     pass
+
+
+def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
+    """Genera un PDF de pedido por proveedor."""
+    pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
+    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=20,
+        textColor=colors.black,
+        alignment=1
+    )
+
+    story = []
+    story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
+    story.append(Spacer(1, 20))
+
+    business_info_text = f"""
+    <b>INFORMACIÓN DEL COMERCIO:</b><br/>
+    Comercio: {business_data.get('business_name', 'N/A')}<br/>
+    Dirección de Entrega: {business_data.get('address', 'N/A')}<br/>
+    Teléfono: {business_data.get('phone', 'N/A')}<br/>
+    Email: {business_data.get('email', 'N/A')}<br/>
+    """
+    story.append(Paragraph(business_info_text, styles['Normal']))
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Spacer(1, 20))
+
+    table_data = [['Producto', 'Cantidad', 'Precio Unit.', 'Subtotal']]
+    total = 0
+    for item in items:
+        quantity = item['quantity']
+        price = item['price']
+        subtotal = quantity * price
+        total += subtotal
+        table_data.append([item['product'], str(quantity), f"${price:,.2f}", f"${subtotal:,.2f}"])
+
+    table_data.append(['', '', 'TOTAL:', f"${total:,.2f}"])
+
+    table = Table(table_data, colWidths=[3*inch, 1*inch, 1.2*inch, 1.3*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+
+    story.append(table)
+    story.append(Spacer(1, 30))
+
+    story.append(Paragraph("<b>DATOS DEL PROVEEDOR:</b>", styles['Heading2']))
+    supplier_info_text = f"""
+    Proveedor: {supplier_name}<br/>
+    Dirección: {DEFAULT_LOCATIONS.get(supplier_name, 'N/A')}<br/>
+    """
+    story.append(Paragraph(supplier_info_text, styles['Normal']))
+
+    doc.build(story)
+    return pdf_path
+
+
+def create_whatsapp_message(supplier_name, items, business_data, total):
+    """Arma el texto para WhatsApp del pedido."""
+    message = f"""🛒 *NUEVO PEDIDO - {business_data.get('business_name', 'Comercio')}*
+
+📍 *Datos de Entrega:*
+• Comercio: {business_data.get('business_name', 'N/A')}
+• Dirección: {business_data.get('address', 'N/A')}
+• Teléfono: {business_data.get('phone', 'N/A')}
+• Email: {business_data.get('email', 'N/A')}
+
+📦 *Productos Solicitados:*
+"""
+    for item in items:
+        subtotal = item['quantity'] * item['price']
+        message += (
+            f"• {item['product']}\n"
+            f"  Cantidad: {item['quantity']}\n"
+            f"  Precio: ${item['price']:,.2f} c/u\n"
+            f"  Subtotal: ${subtotal:,.2f}\n\n"
+        )
+
+    message += f"💰 *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
+    message += f"📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+    message += "Por favor confirme disponibilidad y tiempo de entrega. ¡Gracias!"
+    return message
+
+
+
 
 # Crear instancia del procesador
 processor = PriceListProcessor()
@@ -426,17 +565,24 @@ def search_products():
     q = request.args.get('q','').strip()
     if not q:
         return jsonify({'results': [], 'total': 0})
+    
     filas = buscar_productos_bd(q, 300)
     results = [{
+        'id': f"{r['proveedor']}|{r['producto']}|{float(r['precio']):.4f}",
         'product': r['producto'],
         'price': float(r['precio']),
-        'price_formatted': f"${float(r['precio']):,.2f}",
+        'price_formatted': f"${float(r['precio']):,.2f}",  # Cambiado a $ en lugar de €
         'supplier': r['proveedor'],
         'location': DEFAULT_LOCATIONS.get(r['proveedor'], 'Argentina'),
         'updated_at': (r['actualizado_a'].isoformat() if r.get('actualizado_a') else None)
     } for r in filas]
-    return jsonify({'results': results, 'total': len(results), 'query': q,
-                    'suppliers_count': len(set(r['proveedor'] for r in filas))})
+    
+    return jsonify({
+        'results': results, 
+        'total': len(results), 
+        'query': q,
+        'suppliers_count': len(set(r['proveedor'] for r in filas))
+    })
 
 @app.route('/lists')
 @login_required
@@ -462,6 +608,194 @@ def get_loaded_lists():
         return jsonify({'lists': lists_info, 'total': len(lists_info)})
     finally:
         conn.close()
+
+
+
+@app.route('/cart/add', methods=['POST'])
+@login_required
+def add_to_cart():
+    """Agregar producto al carrito del usuario."""
+    user = session['user']
+    data = request.get_json()
+    
+    product_id = data.get('product_id')
+    product_name = data.get('product_name')
+    price = float(data.get('price', 0))
+    supplier = data.get('supplier')
+    quantity = int(data.get('quantity', 1))
+    print(f"[DEBUG] Agregando al carrito: {product_name}, ${price}, {supplier}")  # Debug
+    if user not in user_carts:
+        user_carts[user] = []
+    # Verificar si ya existe el producto en el carrito
+    found = False
+    for item in user_carts[user]:
+        if item['id'] == product_id:
+            item['quantity'] += quantity
+            found = True
+            break
+    
+    if not found:
+        user_carts[user].append({
+            'id': product_id,
+            'product': product_name,
+            'price': price,
+            'supplier': supplier,
+            'quantity': quantity
+        })
+    return jsonify({
+        'success': True, 
+        'cart_count': len(user_carts[user]),
+                'message': f'{product_name} agregado al carrito'
+    })
+
+@app.route('/cart/get')
+@login_required
+def get_cart():
+    user = session['user']
+    cart = user_carts.get(user, [])
+    total = sum(item['price'] * item['quantity'] for item in cart)
+
+    # agrupar por proveedor
+    suppliers = {}
+    for item in cart:
+        suppliers.setdefault(item['supplier'], []).append(item)
+
+    return jsonify({
+        'cart': cart,
+        'total': total,
+        'total_formatted': f"${total:,.2f}",
+        'suppliers': suppliers
+    })
+
+
+@app.route('/cart/update', methods=['POST'])
+@login_required
+def update_cart():
+    user = session['user']
+    data = request.get_json()
+    product_id = data.get('product_id')
+    quantity = int(data.get('quantity', 1))
+
+    cart = user_carts.get(user, [])
+    for item in cart:
+        if item['id'] == product_id:
+            if quantity <= 0:
+                cart.remove(item)
+            else:
+                item['quantity'] = quantity
+            return jsonify({'success': True})
+    return jsonify({'error': 'Producto no encontrado en el carrito'}), 404
+
+
+@app.route('/cart/remove', methods=['POST'])
+@login_required
+def remove_from_cart():
+    user = session['user']
+    data = request.get_json()
+    product_id = data.get('product_id')
+
+    cart = user_carts.get(user, [])
+    for item in cart:
+        if item['id'] == product_id:
+            cart.remove(item)
+            return jsonify({'success': True})
+    return jsonify({'error': 'Producto no encontrado en el carrito'}), 404
+
+
+@app.route('/cart/clear')
+@login_required
+def clear_cart():
+    user = session['user']
+    user_carts[user] = []
+    return jsonify({'success': True, 'message': 'Carrito limpiado'})
+
+
+@app.route('/cart/generate_pdfs', methods=['POST'])
+@login_required
+def generate_pdfs():
+    user = session['user']
+    if user not in business_data:
+        return jsonify({'error': 'Primero complete la información del comercio'}), 400
+    if user not in user_carts or not user_carts[user]:
+        return jsonify({'error': 'Carrito vacío'}), 400
+
+    cart = user_carts[user]
+    biz = business_data[user]
+
+    # agrupar por proveedor
+    suppliers = {}
+    for item in cart:
+        suppliers.setdefault(item.get('supplier', 'Desconocido'), []).append(item)
+
+    pdfs_generated = []
+    whatsapp_links = []
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    for supplier_name, items in suppliers.items():
+        pdf_filename = f"pedido_{supplier_name.replace(' ', '_')}_{user}_{timestamp}.pdf"
+        pdf_path = generate_pdf_for_supplier(supplier_name, items, biz, pdf_filename)
+
+        total = sum(i['quantity'] * i['price'] for i in items)
+        wa_msg = create_whatsapp_message(supplier_name, items, biz, total)
+        phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # fallback
+        wa_url = f"https://wa.me/{phone.replace('+', '')}?text={urllib.parse.quote(wa_msg)}"
+
+        pdfs_generated.append({
+            'supplier': supplier_name,
+            'filename': pdf_filename,
+            'total': total,
+            'total_formatted': f"${total:,.2f}",
+            'items_count': len(items),
+            'pdf_path': pdf_path
+        })
+        whatsapp_links.append({
+            'supplier': supplier_name,
+            'phone': phone,
+            'url': wa_url,
+            'total': total,
+            'total_formatted': f"${total:,.2f}"
+        })
+
+    return jsonify({
+        'success': True,
+        'pdfs': pdfs_generated,
+        'whatsapp_links': whatsapp_links,
+        'total_suppliers': len(suppliers),
+        'message': f'Se generaron {len(pdfs_generated)} PDFs'
+    })
+
+@app.route('/download_pdf/<filename>')
+@login_required
+def download_pdf(filename):
+    try:
+        return send_file(
+            os.path.join(app.config['PDFS_FOLDER'], filename),
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({'error': f'Error descargando archivo: {str(e)}'}), 500
+
+
+
+
+@app.route('/business/info', methods=['GET', 'POST'])
+@login_required
+def business_info_route():
+    """Guardar/leer datos del comercio del usuario."""
+    user = session['user']
+    if request.method == 'POST':
+        data = request.get_json()
+        business_data[user] = {
+            'business_name': data.get('business_name', ''),
+            'address': data.get('address', ''),
+            'phone': data.get('phone', ''),
+            'email': data.get('email', '')
+        }
+        return jsonify({'success': True, 'message': 'Información guardada'})
+    return jsonify(business_data.get(user, {}))
+
+
 
 
 
@@ -553,7 +887,7 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",      # Cambiá si tu servidor MySQL no es local
         user="root",           # Usuario de MySQL
-        password="12345678",# Contraseña de MySQL
+        password="",# Contraseña de MySQL
         database="login_db"    # Base de datos creada
     )
 
