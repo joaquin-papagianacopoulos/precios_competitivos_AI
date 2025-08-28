@@ -9,7 +9,7 @@ import mysql.connector
 from functools import wraps
 from flask import redirect, url_for, session, request 
 
-# === NUEVOS IMPORTS PARA CARRITO/PDF/WA ===
+
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -377,11 +377,6 @@ class PriceListProcessor:
                 except:
                     pass
 
-
-
-
-
-
 # Crear instancia del procesador
 processor = PriceListProcessor()
 
@@ -396,7 +391,11 @@ def upload_file():
         return jsonify({'success': False, 'message': 'No se seleccionó archivo'}), 400
 
     file = request.files['file']
-    supplier_name = request.form.get('supplier_name', '').strip() or 'Proveedor Sin Nombre'
+    supplier_name = (request.form.get('supplier_name') or '').strip() or 'Proveedor Sin Nombre'
+
+    # NUEVO: leer direccion y telefono
+    supplier_address = (request.form.get('supplier_address') or '').strip()
+    supplier_phone   = (request.form.get('supplier_phone') or '').strip()
 
     if file.filename == '':
         return jsonify({'success': False, 'message': 'No se seleccionó archivo'}), 400
@@ -408,51 +407,57 @@ def upload_file():
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
+    proveedor_status = 'SKIPPED'
+    db_status = 'SKIPPED'
+
     try:
         file.save(filepath)
 
-        # 3) Procesar Excel → obtener productos
+        # 3) Guardar/actualizar datos del proveedor (no cortar flujo si falla)
+        try:
+            upsert_proveedor(supplier_name, supplier_address, supplier_phone)
+            proveedor_status = 'OK'
+        except Exception as e:
+            proveedor_status = f'ERROR proveedor: {e}'
+
+        # 4) Procesar Excel → obtener productos
         products, debug_info = processor.process_excel_file(filepath, supplier_name)
 
         if not products:
+            # No cortamos con 500; devolvemos 200 con success=False y debug
             return jsonify({
                 'success': False,
                 'message': 'No se pudieron extraer productos del archivo',
+                'supplier': supplier_name,
+                'proveedor_status': proveedor_status,
+                'db_status': db_status,
                 'debug_info': debug_info
             }), 200
 
-        # 4) (Opcional) Guardar en memoria para tu UI actual
-        price_lists[supplier_name] = {
-            'products': products,
-            'filename': filename,
-            'upload_date': datetime.now().isoformat(),
-            'total_products': len(products),
-            'debug_info': debug_info
-        }
-
-        # 5) Guardar en MySQL (SOBREESCRIBE por proveedor)
+        # 5) Guardar productos en MySQL (SOBREESCRIBE por proveedor)
         try:
             guardar_productos_en_bd(supplier_name, products)
             db_status = 'OK'
         except Exception as db_err:
             db_status = f'ERROR DB: {db_err}'
-            # no cortamos la respuesta para que puedas ver el error y debuggear
 
-        # 6) Respuesta
+        # 6) Respuesta única y coherente
         return jsonify({
             'success': True,
             'message': f'Archivo procesado. {len(products)} productos cargados.',
             'supplier': supplier_name,
             'total_products': len(products),
+            'proveedor_status': proveedor_status,
             'db_status': db_status,
-            'debug_info': debug_info[:5]  # muestra solo un poco de diagnóstico
+            'debug_info': debug_info[:5]  # un poquito de diagnóstico
         }), 200
 
     except Exception as e:
+        # Error general en procesamiento/carga
         return jsonify({
             'success': False,
             'message': f'Error procesando archivo: {str(e)}',
-            'debug_info': [f'Error general: {str(e)}']
+            'supplier': supplier_name
         }), 500
 
     finally:
@@ -495,19 +500,24 @@ def get_loaded_lists():
     try:
         cur = conn.cursor(dictionary=True)
         cur.execute("""
-            SELECT proveedor,
-                   COUNT(*)            AS total_products,
-                   MAX(actualizado_a)  AS last_update
-            FROM productos
-            GROUP BY proveedor
-            ORDER BY proveedor
+            SELECT p.proveedor,
+                   COUNT(*)           AS total_products,
+                   MAX(p.actualizado_a) AS last_update,
+                   pr.direccion,
+                   pr.telefono
+            FROM productos p
+            LEFT JOIN proveedores pr ON pr.proveedor = p.proveedor
+            GROUP BY p.proveedor, pr.direccion, pr.telefono
+            ORDER BY p.proveedor
         """)
         rows = cur.fetchall()
         lists_info = [{
             'supplier': r['proveedor'],
-            'filename': r['proveedor'] + '.xlsx',  # opcional (no guardamos el real)
+            'filename': r['proveedor'] + '.xlsx',
             'upload_date': (r['last_update'].isoformat() if r['last_update'] else None),
-            'total_products': int(r['total_products'])
+            'total_products': int(r['total_products']),
+            'direccion': r.get('direccion') or '',
+            'telefono': r.get('telefono') or '',
         } for r in rows]
         return jsonify({'lists': lists_info, 'total': len(lists_info)})
     finally:
@@ -730,6 +740,36 @@ def get_connection():
         database="login_db"    # Base de datos creada
     )
 
+def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None):
+    """Crea o actualiza un proveedor con su dirección y teléfono."""
+    if not nombre:
+        return
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO proveedores (proveedor, direccion, telefono)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE direccion=VALUES(direccion), telefono=VALUES(telefono)
+        """, (nombre, direccion or '', telefono or ''))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_proveedor_info(nombre: str) -> dict:
+    """Devuelve {'proveedor','direccion','telefono'} para el proveedor o valores vacíos si no existe."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT proveedor, direccion, telefono FROM proveedores WHERE proveedor=%s", (nombre,))
+        row = cur.fetchone()
+        if not row:
+            return {'proveedor': nombre, 'direccion': '', 'telefono': ''}
+        return row
+    finally:
+        conn.close()
+
+
 import re
 from datetime import datetime
 
@@ -893,13 +933,24 @@ def business_setup():
     
     return jsonify(business_data.get(user, {}))
 
-# === MEJORA EN LA GENERACIÓN DE PDFS ===
 def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
-    """Genera un PDF de pedido por proveedor - MEJORADO"""
+    """
+    Genera el PDF del pedido para un proveedor.
+    - supplier_name: str (nombre EXACTO del proveedor como está en la BD)
+    - items: lista de dicts con keys: product, quantity, price
+    - business_data: dict con keys: business_name, contact_person, address, phone, email
+    - filename: nombre de archivo de salida (str)
+    """
+    # Traer datos del proveedor desde BD (con fallbacks)
+    prov = get_proveedor_info(supplier_name) or {}
+    supplier_address = (prov.get('direccion') or '').strip() or 'Ubicación no especificada'
+    supplier_phone   = (prov.get('telefono')  or '').strip() or 'Teléfono no disponible'
+
     pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
     doc = SimpleDocTemplate(pdf_path, pagesize=letter, topMargin=50, bottomMargin=50)
 
     styles = getSampleStyleSheet()
+
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -909,7 +960,6 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
         alignment=1,
         fontName='Helvetica-Bold'
     )
-    
     header_style = ParagraphStyle(
         'HeaderStyle',
         parent=styles['Heading2'],
@@ -920,12 +970,12 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     )
 
     story = []
-    
-    # Título principal
+
+    # ---- Encabezado
     story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
     story.append(Spacer(1, 20))
 
-    # Información del comercio
+    # ---- Datos del comercio
     story.append(Paragraph("DATOS DEL COMERCIO", header_style))
     business_info_text = f"""
     <b>Comercio:</b> {business_data.get('business_name', 'N/A')}<br/>
@@ -937,66 +987,71 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     story.append(Paragraph(business_info_text, styles['Normal']))
     story.append(Spacer(1, 25))
 
-    # Fecha del pedido
+    # ---- Fecha y Nº de pedido
     story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
     story.append(Paragraph(f"<b>Número de Pedido:</b> {datetime.now().strftime('%Y%m%d%H%M%S')}", styles['Normal']))
     story.append(Spacer(1, 25))
 
-    # Tabla de productos
+    # ---- Detalle de productos
     story.append(Paragraph("DETALLE DEL PEDIDO", header_style))
-    
+
     table_data = [['Producto', 'Cantidad', 'Precio Unitario', 'Subtotal']]
-    total = 0
-    
+    total = 0.0
     for item in items:
-        quantity = item['quantity']
-        price = item['price']
+        quantity = int(item.get('quantity', 0) or 0)
+        price = float(item.get('price', 0) or 0.0)
         subtotal = quantity * price
         total += subtotal
+        # Usamos Paragraph para permitir wrap de nombres largos
         table_data.append([
-            Paragraph(item['product'], styles['Normal']),
+            Paragraph(str(item.get('product', '')), styles['Normal']),
             str(quantity),
             f"${price:,.2f}",
             f"${subtotal:,.2f}"
         ])
 
-    # Fila de total
-    table_data.append(['', '', Paragraph('<b>TOTAL:</b>', styles['Normal']), Paragraph(f'<b>${total:,.2f}</b>', styles['Normal'])])
+    # Total
+    table_data.append([
+        '',
+        '',
+        Paragraph('<b>TOTAL:</b>', styles['Normal']),
+        Paragraph(f'<b>${total:,.2f}</b>', styles['Normal'])
+    ])
 
     table = Table(table_data, colWidths=[3.5*inch, 0.8*inch, 1.2*inch, 1.2*inch])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.navy),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (0, 1), (0, -2), 'LEFT'),  # Align product names to left
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('TEXTCOLOR',  (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',   (0, 0), (-1, 0), 11),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('TOPPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightblue),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('TOPPADDING',    (0, 0), (-1, 0), 12),
+
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
 
+        # Alinear nombre de producto a la izquierda, resto centrado
+        ('ALIGN', (0, 1), (0, -2), 'LEFT'),
+        ('ALIGN', (1, 1), (-1, -2), 'CENTER'),
+
+        ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightblue),
+        ('FONTNAME',   (0, -1), (-1, -1), 'Helvetica-Bold'),
+    ]))
     story.append(table)
     story.append(Spacer(1, 30))
 
-    # Información del proveedor
+    # ---- Datos del proveedor (desde BD)
     story.append(Paragraph("DATOS DEL PROVEEDOR", header_style))
-    supplier_location = DEFAULT_LOCATIONS.get(supplier_name, 'Ubicación no especificada')
-    supplier_phone = SUPPLIER_PHONES.get(supplier_name, 'Teléfono no disponible')
-    
     supplier_info_text = f"""
     <b>Proveedor:</b> {supplier_name}<br/>
-    <b>Dirección:</b> {supplier_location}<br/>
+    <b>Dirección:</b> {supplier_address}<br/>
     <b>Teléfono:</b> {supplier_phone}<br/>
     """
     story.append(Paragraph(supplier_info_text, styles['Normal']))
     story.append(Spacer(1, 20))
 
-    # Notas adicionales
+    # ---- Notas
     story.append(Paragraph("NOTAS", header_style))
     notes_text = """
     • Por favor confirme disponibilidad de todos los productos<br/>
@@ -1009,46 +1064,101 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     doc.build(story)
     return pdf_path
 
-# === MEJORA EN EL MENSAJE DE WHATSAPP ===
+
+# === Helper: traer proveedor desde BD (con fallbacks a defaults) ===
+def get_proveedor_info(nombre_proveedor: str) -> dict:
+    """
+    Devuelve {'nombre','direccion','telefono'} del proveedor si existe en BD.
+    Fallback:
+      - DEFAULT_LOCATIONS[nombre] para direccion (si existe)
+      - SUPPLIER_PHONES[nombre] para telefono (si existe)
+    """
+    nombre = (nombre_proveedor or '').strip()
+    if not nombre:
+        return {}
+
+    # 1) Intentar desde BD (tabla 'proveedores' sugerida)
+    try:
+        conn = get_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT nombre, direccion, telefono
+            FROM proveedores
+            WHERE nombre = %s
+            LIMIT 1
+        """, (nombre,))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return {
+                'nombre': row.get('nombre') or nombre,
+                'direccion': row.get('direccion') or '',
+                'telefono': row.get('telefono') or ''
+            }
+    except Exception as e:
+        # Si falla la BD, seguimos con fallbacks
+        print(f"[WARN] get_proveedor_info DB error: {e}")
+
+    # 2) Fallbacks (si no está en BD)
+    direccion_fb = DEFAULT_LOCATIONS.get(nombre, '')
+    telefono_fb  = SUPPLIER_PHONES.get(nombre, '')
+    return {
+        'nombre': nombre,
+        'direccion': direccion_fb,
+        'telefono': telefono_fb
+    }
+
+
 def create_whatsapp_message(supplier_name, items, business_data, total):
-    """Arma el texto para WhatsApp del pedido - MEJORADO"""
     contact_person = business_data.get('contact_person', business_data.get('business_name', 'Cliente'))
-    
-    message = f"""🛒 *NUEVO PEDIDO*
+    prov = get_proveedor_info(supplier_name)
+    prov_dir = prov.get('direccion', '')
+    prov_tel = prov.get('telefono', '')
 
-👤 *De:* {contact_person}
-🏢 *Comercio:* {business_data.get('business_name', 'N/A')}
+    message = f""" *NUEVO PEDIDO*
 
-📍 *Datos de Entrega:*
-• Dirección: {business_data.get('address', 'N/A')}
-• Teléfono: {business_data.get('phone', 'N/A')}
-• Email: {business_data.get('email', 'N/A')}
+ *De:* {contact_person}
+ *Comercio:* {business_data.get('business_name', 'N/A')}
+- *Datos de Entrega:*
+-  Dirección: {business_data.get('address', 'N/A')}
+- Teléfono: {business_data.get('phone', 'N/A')}
+- Email: {business_data.get('email', 'N/A')}
 
-📦 *Productos Solicitados:*
+ *Proveedor:* {supplier_name}
+- Dirección: {prov_dir or 'N/D'}
+- Teléfono: {prov_tel or 'N/D'}
+
+*Productos Solicitados:*
 """
+    # ... resto tal cual
+
     
     for i, item in enumerate(items, 1):
         subtotal = item['quantity'] * item['price']
         message += f"{i}. *{item['product']}*\n"
-        message += f"   📦 Cantidad: {item['quantity']}\n"
-        message += f"   💰 Precio: ${item['price']:,.2f} c/u\n"
-        message += f"   💵 Subtotal: ${subtotal:,.2f}\n\n"
+        message += f"   - Cantidad: {item['quantity']}\n"
+        message += f"   - Precio: ${item['price']:,.2f} c/u\n"
+        message += f"   - Subtotal: ${subtotal:,.2f}\n\n"
 
-    message += f"💰 *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
-    message += f"📅 *Fecha:* {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
-    message += f"🔢 *Nº Pedido:* {datetime.now().strftime('%Y%m%d%H%M%S')}\n\n"
+    message += f"- *TOTAL DEL PEDIDO: ${total:,.2f}*\n\n"
+    message += f"- *Fecha:* {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    message += f"- *Nº Pedido:* {datetime.now().strftime('%Y%m%d%H%M%S')}\n\n"
     
-    message += "❓ *Por favor confirme:*\n"
-    message += "• ✅ Disponibilidad de productos\n"
-    message += "• 🚚 Tiempo de entrega\n"
-    message += "• 💳 Condiciones de pago\n"
-    message += "• 📋 Cualquier modificación necesaria\n\n"
+    message += "*Por favor confirme:*\n"
+    message += "- Disponibilidad de productos\n"
+    message += "- Tiempo de entrega\n"
+    message += "- Condiciones de pago\n"
+    message += "- Cualquier modificación necesaria\n\n"
     
-    message += "¡Gracias por su atención! 🙏"
+    message += "¡Gracias por su atención! "
     
     return message
 
-# === ENDPOINT MEJORADO PARA GENERAR PDFS ===
+def _normalize_phone(raw_phone: str) -> str:
+    """Deja solo dígitos para wa.me."""
+    return re.sub(r'\D+', '', raw_phone or '')
+
+
 @app.route('/cart/generate_pdfs', methods=['POST'])
 @login_required
 def generate_pdfs():
@@ -1106,8 +1216,9 @@ def generate_pdfs():
             wa_msg = create_whatsapp_message(supplier_name, items, biz, total)
             phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # fallback
             
-            # Crear URL de WhatsApp con mensaje
-            wa_url = f"https://wa.me/{phone.replace('+', '')}?text={urllib.parse.quote(wa_msg)}"
+            prov = get_proveedor_info(supplier_name)
+            phone = (prov.get('telefono') or '+541156649404').replace('+', '').replace(' ', '').replace('-', '')
+            wa_url = f"https://wa.me/{phone}?text={urllib.parse.quote(wa_msg)}"
 
             pdfs_generated.append({
                 'supplier': supplier_name,

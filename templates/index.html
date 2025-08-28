@@ -530,6 +530,37 @@
                             <label class="form-label" for="supplierName">Nombre del Proveedor</label>
                             <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required>
                         </div>
+                        <form id="uploadForm" class="upload-form">
+                        <div class="form-group">
+                            <label class="form-label" for="supplierName">Nombre del Proveedor</label>
+                            <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required>
+                        </div>
+
+                        <!-- NUEVO: Dirección -->
+                        <div class="form-group">
+                            <label class="form-label" for="supplierAddress">Dirección del Proveedor</label>
+                            <input type="text" id="supplierAddress" class="form-input" placeholder="Ej: Av. Corrientes 1234, CABA">
+                        </div>
+
+                        <!-- NUEVO: Teléfono -->
+                        <div class="form-group">
+                            <label class="form-label" for="supplierPhone">Teléfono del Proveedor</label>
+                            <input type="tel" id="supplierPhone" class="form-input" placeholder="Ej: +54 11 5555-5555">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Archivo Excel</label>
+                            <div class="file-input-wrapper">
+                            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" required>
+                            <button type="button" class="file-input-button" onclick="document.getElementById('fileInput').click()">
+                                📊 Seleccionar Archivo
+                            </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="submit-btn">🚀 Cargar Lista</button>
+                        </form>
+
                         
                         <div class="form-group">
                             <label class="form-label">Archivo Excel</label>
@@ -609,20 +640,25 @@
         loadListsInfo();
 
         // Manejo del formulario de upload
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData();
-            const fileInput = document.getElementById('fileInput');
-            const supplierName = document.getElementById('supplierName').value;
-            
-            if (!fileInput.files[0]) {
-                showStatus('error', 'Por favor selecciona un archivo');
-                return;
-            }
-            
-            formData.append('file', fileInput.files[0]);
-            formData.append('supplier_name', supplierName);
+                document.getElementById('uploadForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                const formData = new FormData();
+                const fileInput = document.getElementById('fileInput');
+                const supplierName = document.getElementById('supplierName').value;
+                const supplierAddress = document.getElementById('supplierAddress').value;   // NUEVO
+                const supplierPhone = document.getElementById('supplierPhone').value;       // NUEVO
+
+                if (!fileInput.files[0]) {
+                    showStatus('error', 'Por favor selecciona un archivo');
+                    return;
+                }
+
+                formData.append('file', fileInput.files[0]);
+                formData.append('supplier_name', supplierName);
+                formData.append('supplier_address', supplierAddress); // NUEVO
+                formData.append('supplier_phone', supplierPhone);     // NUEVO
+
             
             showStatus('info', '⏳ Procesando archivo...');
             
@@ -772,15 +808,16 @@
                     const html = data.lists.map(list => {
                         totalProducts += list.total_products;
                         return `
-                            <div class="list-item">
-                                <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
-                                <div class="list-name">${list.supplier}</div>
-                                <div class="list-info">
-                                    ${list.total_products} productos<br>
-                                    <small>Archivo: ${list.filename}</small>
-                                </div>
+                         <div class="list-item">
+                            <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
+                            <div class="list-name">${list.supplier}</div>
+                            <div class="list-info">
+                            ${list.total_products} productos<br>
+                            <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
                             </div>
+                        </div>
                         `;
+                        
                     }).join('');
 
                     listsDiv.innerHTML = html;
