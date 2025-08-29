@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 import re
-import mysql.connector
+import pymysql
 from functools import wraps
 from flask import redirect, url_for, session, request 
 
@@ -858,13 +858,12 @@ def cleanup_temp_files():
             'message': f'Error limpiando archivos: {str(e)}'
         })
 def get_connection():
-    return mysql.connector.connect(
+    return pymysql.connect(
         host="gateway01.us-east-1.prod.aws.tidbcloud.com",      # Cambiá si tu servidor MySQL no es local
         user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
         password="TI03zW0skLEYT7Go",# Contraseña de MySQL
         database="test",    # Base de datos creada
-        ssl_ca="isrgrootx1.pem",
-        ssl_disabled=False
+        ssl={"ca":"isrgrootx1.pem"}
     )
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
