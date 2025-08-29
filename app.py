@@ -862,7 +862,8 @@ def get_connection():
         host="gateway01.us-east-1.prod.aws.tidbcloud.com",      # Cambiá si tu servidor MySQL no es local
         user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
         password="TI03zW0skLEYT7Go",# Contraseña de MySQL
-        database="test"    # Base de datos creada
+        database="test",    # Base de datos creada
+        ssl_ca="/isrgrootx1.pem"
     )
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
