@@ -863,7 +863,7 @@ def get_connection():
         user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
         password="TI03zW0skLEYT7Go",# Contraseña de MySQL
         database="test",    # Base de datos creada
-        ssl_ca="/isrgrootx1.pem"
+        ssl_ca="isrgrootx1.pem"
     )
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
