@@ -396,6 +396,7 @@ def upload_file():
     # NUEVO: leer direccion y telefono
     supplier_address = (request.form.get('supplier_address') or '').strip()
     supplier_phone   = (request.form.get('supplier_phone') or '').strip()
+    supplier_email   = (request.form.get('supplier_email') or '').strip()
 
     if file.filename == '':
         return jsonify({'success': False, 'message': 'No se seleccionó archivo'}), 400
@@ -415,7 +416,7 @@ def upload_file():
 
         # 3) Guardar/actualizar datos del proveedor (no cortar flujo si falla)
         try:
-            upsert_proveedor(supplier_name, supplier_address, supplier_phone)
+            upsert_proveedor(supplier_name, supplier_address, supplier_phone, supplier_email)
             proveedor_status = 'OK'
         except Exception as e:
             proveedor_status = f'ERROR proveedor: {e}'
@@ -504,10 +505,11 @@ def get_loaded_lists():
                    COUNT(*)           AS total_products,
                    MAX(p.actualizado_a) AS last_update,
                    pr.direccion,
-                   pr.telefono
+                   pr.telefono,
+                   pr.email
             FROM productos p
-            LEFT JOIN proveedores pr ON pr.proveedor = p.proveedor
-            GROUP BY p.proveedor, pr.direccion, pr.telefono
+            LEFT JOIN proveedores_config pr ON pr.proveedor = p.proveedor
+            GROUP BY p.proveedor, pr.direccion, pr.telefono, pr.email
             ORDER BY p.proveedor
         """)
         rows = cur.fetchall()
@@ -518,11 +520,11 @@ def get_loaded_lists():
             'total_products': int(r['total_products']),
             'direccion': r.get('direccion') or '',
             'telefono': r.get('telefono') or '',
+            'email': r.get('email') or ''
         } for r in rows]
         return jsonify({'lists': lists_info, 'total': len(lists_info)})
     finally:
         conn.close()
-
 
 
 @app.route('/cart/add', methods=['POST'])
@@ -625,7 +627,130 @@ def clear_cart():
 
 
 
+@app.route("/business/save", methods=["POST"])
+def save_business():
+    print("🚀 Ruta /business/save llamada")
+    
+    data = request.json
+    print("📦 Datos recibidos:", data)
+    
+    # CORREGIDO: Usar 'user' en lugar de 'username'
+    current_user = session.get('user')  # ← Cambiado aquí
+    current_role = session.get('role')
+    
+    print(f"👤 Usuario desde sesión: '{current_user}'")
+    print(f"🔑 Rol desde sesión: '{current_role}'")
+    print(f"🔍 Sesión completa: {dict(session)}")
+    
+    if not current_user:
+        print("❌ ERROR: No hay usuario en la sesión")
+        return jsonify({
+            "success": False, 
+            "error": "Usuario no autenticado. Por favor, inicia sesión."
+        })
+    
+    if not data:
+        print("❌ No hay datos JSON")
+        return jsonify({"success": False, "error": "No se recibieron datos"})
+    
+    try:
+        print("🔌 Intentando conectar a BD...")
+        conn = get_connection()
+        cursor = conn.cursor()
+        print("✅ Conexión exitosa")
 
+        # Verificar si el usuario existe en la tabla
+        check_sql = "SELECT username FROM usuarios WHERE username = %s"
+        cursor.execute(check_sql, (current_user,))
+        existing_user = cursor.fetchone()
+        
+        print(f"🔍 Usuario en BD: {existing_user}")
+        
+        if not existing_user:
+            print("❌ ERROR: Usuario no existe en la tabla usuarios")
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": False, 
+                "error": f"El usuario '{current_user}' no existe en la base de datos. Contacta al administrador."
+            })
+
+        # UPDATE para actualizar la fila del usuario
+        sql = """
+        UPDATE usuarios 
+        SET business_name = %s, 
+            comercio = %s, 
+            address = %s, 
+            phone = %s, 
+            email = %s
+        WHERE username = %s
+        """
+        
+        values = (
+            data.get("businessName"),
+            data.get("contactPerson"),
+            data.get("businessAddress"),
+            data.get("businessPhone"),
+            data.get("businessEmail"),
+            current_user
+        )
+        
+        print("📝 SQL:", sql)
+        print("📝 Values:", values)
+        
+        cursor.execute(sql, values)
+        rows_affected = cursor.rowcount
+        print(f"✅ Query ejecutada, filas afectadas: {rows_affected}")
+        
+        if rows_affected == 0:
+            print("⚠️ ADVERTENCIA: No se afectaron filas")
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "success": False, 
+                "error": f"No se pudo actualizar el usuario '{current_user}'"
+            })
+        
+        conn.commit()
+        print("✅ Commit realizado")
+
+        # Verificar que se guardó correctamente
+        verify_sql = "SELECT business_name, address, phone FROM usuarios WHERE username = %s"
+        cursor.execute(verify_sql, (current_user,))
+        updated_data = cursor.fetchone()
+        print(f"🔍 Datos guardados: {updated_data}")
+
+        cursor.close()
+        conn.close()
+        print("✅ Conexión cerrada")
+
+        return jsonify({
+            "success": True, 
+            "message": f"Datos del negocio actualizados correctamente para {current_user}",
+            "user": current_user,
+            "data": {
+                "business_name": data.get("businessName"),
+                "contact_person": data.get("contactPerson"),
+                "address": data.get("businessAddress"),
+                "phone": data.get("businessPhone"),
+                "email": data.get("businessEmail")
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        try:
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals():
+                conn.close()
+        except:
+            pass
+            
+        return jsonify({"success": False, "error": str(e)})
 
 
 @app.route('/business/info', methods=['GET', 'POST'])
@@ -736,39 +861,48 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",      # Cambiá si tu servidor MySQL no es local
         user="root",           # Usuario de MySQL
-        password="",# Contraseña de MySQL
+        password="12345678",# Contraseña de MySQL
         database="login_db"    # Base de datos creada
     )
 
-def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None):
-    """Crea o actualiza un proveedor con su dirección y teléfono."""
+def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
+    """Crea o actualiza un proveedor con su dirección, teléfono y email."""
     if not nombre:
         return
     conn = get_connection()
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO proveedores (proveedor, direccion, telefono)
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE direccion=VALUES(direccion), telefono=VALUES(telefono)
-        """, (nombre, direccion or '', telefono or ''))
+            INSERT INTO proveedores_config (proveedor, direccion, telefono, email)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                direccion=VALUES(direccion), 
+                telefono=VALUES(telefono),
+                email=VALUES(email)
+        """, (nombre, direccion or '', telefono or '', email or ''))
         conn.commit()
     finally:
         conn.close()
 
 def get_proveedor_info(nombre: str) -> dict:
-    """Devuelve {'proveedor','direccion','telefono'} para el proveedor o valores vacíos si no existe."""
+    """Devuelve {'proveedor','direccion','telefono','email'} para el proveedor o valores vacíos si no existe."""
     conn = get_connection()
     try:
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT proveedor, direccion, telefono FROM proveedores WHERE proveedor=%s", (nombre,))
+        cur.execute("SELECT proveedor, direccion, telefono, email FROM proveedores_config WHERE proveedor=%s", (nombre,))
         row = cur.fetchone()
         if not row:
-            return {'proveedor': nombre, 'direccion': '', 'telefono': ''}
-        return row
+            return {'proveedor': nombre, 'direccion': '', 'telefono': '', 'email': ''}
+        
+        # Convertir None a string vacío
+        return {
+            'proveedor': row.get('proveedor') or nombre,
+            'direccion': row.get('direccion') or '',
+            'telefono': row.get('telefono') or '',
+            'email': row.get('email') or ''
+        }
     finally:
         conn.close()
-
 
 import re
 from datetime import datetime
@@ -837,7 +971,14 @@ def buscar_productos_bd(q: str, limite: int = 300):
     finally:
         conn.close()
 
-
+def has_complete_business_data(username):
+    """Verifica si el usuario tiene datos completos del negocio en la BD"""
+    business_data = get_user_business_data(username)
+    return all([
+        business_data.get('business_name', '').strip(),
+        business_data.get('address', '').strip(),
+        business_data.get('phone', '').strip()
+    ])
 # Verifica usuario en la DB
 def get_user(username, password):
     conn = get_connection()
@@ -914,7 +1055,19 @@ def _redirect_root_to_login():
     if request.path == "/":
         return redirect(url_for("login"))
  
-
+@app.route('/business/check', methods=['GET'])
+@login_required
+def check_business_data():
+    """Verifica si el usuario tiene datos completos del negocio"""
+    user = session['user']
+    has_data = has_complete_business_data(user)
+    business_data = get_user_business_data(user) if has_data else {}
+    
+    return jsonify({
+        'has_complete_data': has_data,
+        'data': business_data,
+        'required_fields': ['business_name', 'address', 'phone']
+    })
 @app.route('/business/setup', methods=['GET', 'POST'])
 @login_required
 def business_setup():
@@ -943,6 +1096,10 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     """
     # Traer datos del proveedor desde BD (con fallbacks)
     prov = get_proveedor_info(supplier_name) or {}
+    print(f"Debug - Proveedor: {supplier_name}")
+    print(f"Debug - Datos obtenidos: {prov}")
+    print(f"Debug - Tipo direccion: {type(prov.get('direccion'))}, valor: '{prov.get('direccion')}'")
+    print(f"Debug - Tipo telefono: {type(prov.get('telefono'))}, valor: '{prov.get('telefono')}'")
     supplier_address = (prov.get('direccion') or '').strip() or 'Ubicación no especificada'
     supplier_phone   = (prov.get('telefono')  or '').strip() or 'Teléfono no disponible'
 
@@ -1047,6 +1204,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     <b>Proveedor:</b> {supplier_name}<br/>
     <b>Dirección:</b> {supplier_address}<br/>
     <b>Teléfono:</b> {supplier_phone}<br/>
+    <b>Email:</b> {supplier_email}<br/>
     """
     story.append(Paragraph(supplier_info_text, styles['Normal']))
     story.append(Spacer(1, 20))
@@ -1065,48 +1223,46 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     return pdf_path
 
 
-# === Helper: traer proveedor desde BD (con fallbacks a defaults) ===
-def get_proveedor_info(nombre_proveedor: str) -> dict:
-    """
-    Devuelve {'nombre','direccion','telefono'} del proveedor si existe en BD.
-    Fallback:
-      - DEFAULT_LOCATIONS[nombre] para direccion (si existe)
-      - SUPPLIER_PHONES[nombre] para telefono (si existe)
-    """
-    nombre = (nombre_proveedor or '').strip()
-    if not nombre:
-        return {}
-
-    # 1) Intentar desde BD (tabla 'proveedores' sugerida)
+@app.route("/business/get", methods=["GET"])
+def get_business():
+    """Obtiene los datos del negocio del usuario actual"""
+    
+    current_user = session.get('user')  # ← Corregido
+    
+    if not current_user:
+        return jsonify({"success": False, "error": "Usuario no autenticado"})
+    
     try:
         conn = get_connection()
-        cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT nombre, direccion, telefono
-            FROM proveedores
-            WHERE nombre = %s
-            LIMIT 1
-        """, (nombre,))
-        row = cur.fetchone()
+        cursor = conn.cursor(dictionary=True)  # Para obtener resultados como diccionario
+        
+        sql = """
+        SELECT business_name, comercio, address, phone, email 
+        FROM usuarios 
+        WHERE username = %s
+        """
+        
+        cursor.execute(sql, (current_user,))
+        business_data = cursor.fetchone()
+        
+        cursor.close()
         conn.close()
-        if row:
-            return {
-                'nombre': row.get('nombre') or nombre,
-                'direccion': row.get('direccion') or '',
-                'telefono': row.get('telefono') or ''
-            }
+        
+        if business_data:
+            return jsonify({
+                "success": True, 
+                "data": business_data,
+                "message": "Datos del negocio obtenidos correctamente"
+            })
+        else:
+            return jsonify({
+                "success": False, 
+                "message": "No se encontraron datos del negocio para este usuario"
+            })
+            
     except Exception as e:
-        # Si falla la BD, seguimos con fallbacks
-        print(f"[WARN] get_proveedor_info DB error: {e}")
-
-    # 2) Fallbacks (si no está en BD)
-    direccion_fb = DEFAULT_LOCATIONS.get(nombre, '')
-    telefono_fb  = SUPPLIER_PHONES.get(nombre, '')
-    return {
-        'nombre': nombre,
-        'direccion': direccion_fb,
-        'telefono': telefono_fb
-    }
+        print("❌ ERROR obteniendo datos del negocio:", str(e))
+        return jsonify({"success": False, "error": str(e)})
 
 
 def create_whatsapp_message(supplier_name, items, business_data, total):
@@ -1158,102 +1314,129 @@ def _normalize_phone(raw_phone: str) -> str:
     """Deja solo dígitos para wa.me."""
     return re.sub(r'\D+', '', raw_phone or '')
 
-
 @app.route('/cart/generate_pdfs', methods=['POST'])
 @login_required
 def generate_pdfs():
     user = session['user']
     
-    # Verificar que hay datos del negocio
-    if user not in business_data:
+    # Obtener datos del negocio desde la BD (no desde variable temporal)
+    business_data_from_db = get_user_business_data(user)
+    
+    # Verificar que hay datos del negocio completos en la BD
+    if not business_data_from_db or not all([
+        business_data_from_db.get('business_name', '').strip(),
+        business_data_from_db.get('address', '').strip(),
+        business_data_from_db.get('phone', '').strip()
+    ]):
         return jsonify({
+            'success': False,
             'error': 'Datos del negocio requeridos',
             'show_business_form': True,
             'message': 'Primero complete la información de su comercio'
         }), 400
     
-    # Validar que los datos obligatorios estén completos
-    biz = business_data[user]
-    required_fields = ['business_name', 'address', 'phone']
-    missing_fields = [field for field in required_fields if not biz.get(field, '').strip()]
-    
-    if missing_fields:
-        return jsonify({
-            'error': 'Datos incompletos',
-            'missing_fields': missing_fields,
-            'show_business_form': True,
-            'message': f'Complete los siguientes campos: {", ".join(missing_fields)}'
-        }), 400
-    
     if user not in user_carts or not user_carts[user]:
-        return jsonify({'error': 'Carrito vacío'}), 400
+        return jsonify({'success': False, 'error': 'Carrito vacío'}), 400
 
     cart = user_carts[user]
-
-    # Agrupar por proveedor
+    
+    # Agrupar productos por proveedor
     suppliers = {}
     for item in cart:
-        suppliers.setdefault(item.get('supplier', 'Proveedor Desconocido'), []).append(item)
-
-    pdfs_generated = []
+        supplier = item['supplier']
+        if supplier not in suppliers:
+            suppliers[supplier] = []
+        suppliers[supplier].append(item)
+    
+    # Generar un PDF por cada proveedor
+    generated_pdfs = []
     whatsapp_links = []
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    try:
-        for supplier_name, items in suppliers.items():
-            # Generar nombre de archivo único
-            safe_supplier = supplier_name.replace(' ', '_').replace('/', '_')
-            safe_user = user.replace(' ', '_').replace('/', '_')
-            pdf_filename = f"pedido_{safe_supplier}_{safe_user}_{timestamp}.pdf"
+    safe_user = user.replace(' ', '_').replace('/', '_')
+    
+    for supplier, items in suppliers.items():
+        safe_supplier = supplier.replace(' ', '_').replace('/', '_')
+        filename = f"pedido_{safe_supplier}_{safe_user}_{timestamp}.pdf"
+        
+        try:
+            # Usar datos de la BD en lugar de variable temporal
+            pdf_path = generate_pdf_for_supplier(supplier, items, business_data_from_db, filename)
             
-            # Generar PDF
-            pdf_path = generate_pdf_for_supplier(supplier_name, items, biz, pdf_filename)
+            total_supplier = sum(item['quantity'] * item['price'] for item in items)
             
-            # Calcular total
-            total = sum(i['quantity'] * i['price'] for i in items)
-            
-            # Generar mensaje y link de WhatsApp
-            wa_msg = create_whatsapp_message(supplier_name, items, biz, total)
-            phone = SUPPLIER_PHONES.get(supplier_name, '+541156649404')  # fallback
-            
-            prov = get_proveedor_info(supplier_name)
-            phone = (prov.get('telefono') or '+541156649404').replace('+', '').replace(' ', '').replace('-', '')
-            wa_url = f"https://wa.me/{phone}?text={urllib.parse.quote(wa_msg)}"
-
-            pdfs_generated.append({
-                'supplier': supplier_name,
-                'filename': pdf_filename,
-                'total': total,
-                'total_formatted': f"${total:,.2f}",
+            generated_pdfs.append({
+                'supplier': supplier,
+                'filename': filename,
+                'path': pdf_path,
                 'items_count': len(items),
-                'pdf_path': pdf_path,
-                'phone': phone
+                'total': total_supplier,
+                'total_formatted': f"${total_supplier:,.2f}"
             })
+            
+            # Crear mensaje de WhatsApp
+            whatsapp_message = create_whatsapp_message(supplier, items, business_data_from_db, total_supplier)
+            phone = SUPPLIER_PHONES.get(supplier, '')
+            phone_clean = _normalize_phone(phone)
+            
+            if phone_clean:
+                wa_url = f"https://wa.me/{phone_clean}?text={urllib.parse.quote(whatsapp_message)}"
+            else:
+                wa_url = f"https://wa.me/?text={urllib.parse.quote(whatsapp_message)}"
             
             whatsapp_links.append({
-                'supplier': supplier_name,
-                'phone': phone,
-                'url': wa_url,
-                'total': total,
-                'total_formatted': f"${total:,.2f}",
-                'message_preview': wa_msg[:100] + '...' if len(wa_msg) > 100 else wa_msg
+                'supplier': supplier,
+                'url': wa_url
             })
-
-        return jsonify({
-            'success': True,
-            'pdfs': pdfs_generated,
-            'whatsapp_links': whatsapp_links,
-            'total_suppliers': len(suppliers),
-            'message': f'Se generaron {len(pdfs_generated)} PDFs exitosamente',
-            'business_info': biz  # Para confirmar en el frontend
-        })
-
-    except Exception as e:
+            
+        except Exception as e:
+            print(f"Error generando PDF para {supplier}: {e}")
+            continue
+    
+    if not generated_pdfs:
         return jsonify({
             'success': False,
-            'error': f'Error generando PDFs: {str(e)}',
-            'message': 'Ocurrió un error al generar los documentos'
+            'error': 'No se pudieron generar los PDFs'
         }), 500
+    
+    return jsonify({
+        'success': True,
+        'message': f'{len(generated_pdfs)} PDF(s) generado(s) exitosamente',
+        'pdfs': generated_pdfs,
+        'whatsapp_links': whatsapp_links,
+        'total_suppliers': len(suppliers)
+    })
+
+def get_user_business_data(username):
+    """Obtiene los datos completos del negocio del usuario desde la BD"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT business_name, comercio as contact_person, address, phone, email 
+            FROM usuarios 
+            WHERE username = %s
+        """, (username,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            # Asegurar que los campos requeridos existen
+            return {
+                'business_name': result.get('business_name', '').strip(),
+                'contact_person': result.get('contact_person', '').strip(),
+                'address': result.get('address', '').strip(),
+                'phone': result.get('phone', '').strip(),
+                'email': result.get('email', '').strip()
+            }
+        return {}
+        
+    except Exception as e:
+        print(f"Error obteniendo datos del negocio: {e}")
+        return {}
 
 # === ENDPOINT PARA VALIDAR DATOS DEL NEGOCIO ===
 @app.route('/business/validate', methods=['POST'])

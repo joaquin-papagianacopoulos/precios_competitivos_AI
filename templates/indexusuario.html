@@ -3,7 +3,625 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Comparador de Precios - Usuario</title>
+  <title>ComparApp+</title>
+    <script>
+  let cartData = { cart: [], total: 0, suppliers: {} };
+  let businessDataSaved = false;
+
+  // Al cargar
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCart();
+    loadBusinessData();
+
+    // submit del modal de negocio
+    const businessForm = document.getElementById('businessForm');
+    businessForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveBusinessData();
+    });
+
+    // Buscar con Enter
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') searchProducts();
+    });
+    const requiredFields = ['businessName', 'businessAddress', 'businessPhone'];
+    requiredFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('blur', function() {
+                if (!this.value.trim()) {
+                    this.style.borderColor = '#dc3545';
+                } else {
+                    this.style.borderColor = '#28a745';
+                }
+            });
+            
+            field.addEventListener('input', function() {
+                if (this.value.trim()) {
+                    this.style.borderColor = '#ced4da';
+                }
+            });
+        }
+    });
+  });
+
+  /* =================== BUSCADOR =================== */
+  function searchProducts() {
+    const query = document.getElementById('searchInput').value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!query) {
+      showStatus('error', '🔍 Ingresa un término de búsqueda');
+      return;
+    }
+
+    resultsDiv.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        Buscando "${escapeHtml(query)}"...
+      </div>
+    `;
+
+    fetch(`/search?q=${encodeURIComponent(query)}`)
+      .then(resp => {
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        return resp.json();
+      })
+      .then(data => displayResults(data))
+      .catch(err => {
+        console.error('Error en búsqueda:', err);
+        resultsDiv.innerHTML = `
+          <div class="no-results">
+            <div>
+              <p>❌ Error en la búsqueda: ${escapeHtml(err.message)}</p>
+              <p style="margin-top:10px; font-size:.9rem;">Verifica que haya productos cargados en la base de datos</p>
+            </div>
+          </div>
+        `;
+      });
+  }
+
+  function displayResults(data) {
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!data || !Array.isArray(data.results) || (data.total|0) === 0) {
+      const message = (data && data.message)
+        ? data.message
+        : `No se encontraron productos que coincidan con "${escapeHtml((data && data.query) ? data.query : '')}"`;
+      resultsDiv.innerHTML = `
+        <div class="no-results">
+          <div>
+            <p>🔍 ${escapeHtml(message)}</p>
+            <p style="margin-top:10px; font-size:.9rem;">Intenta con otros términos de búsqueda</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const resultsInfo = `
+      <div class="results-info">
+        <div>📊 ${data.total} resultado(s) para "<strong>${escapeHtml(data.query || '')}</strong>"</div>
+        <div>${data.suppliers_count || 0} proveedor(es)</div>
+      </div>
+    `;
+
+    const tableHeader = `
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th style="width:40%;">Producto</th>
+            <th style="width:20%;">Precio</th>
+            <th style="width:20%;">Proveedor</th>
+            <th style="width:20%;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    const rows = data.results.map(p => `
+      <tr>
+        <td class="product-name-cell">${escapeHtml(p.product)}</td>
+        <td class="price-cell">${escapeHtml(p.price_formatted || (Number(p.price)||0).toFixed(2))}</td>
+        <td class="supplier-cell">${escapeHtml(p.supplier)}</td>
+        <td>
+          <button class="add-to-cart-btn"
+            onclick="addToCart('${p.id}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
+            🛒 Agregar
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    resultsDiv.innerHTML = resultsInfo + tableHeader + rows + `</tbody></table>`;
+  }
+
+  function clearSearch() {
+    const input = document.getElementById('searchInput');
+    input.value = '';
+    document.getElementById('searchResults').innerHTML = `
+      <div class="no-results">
+        <p>🔍 Busca productos para agregar a tu carrito</p>
+        <p style="margin-top:10px; font-size:.9rem; color:#28a745;">✨ Encuentra los mejores precios</p>
+      </div>
+    `;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = String(text ?? '');
+    return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+  }
+
+  /* =================== CARRITO =================== */
+  function addToCart(productId, productName, price, supplier) {
+    fetch('/cart/add', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        product_id: productId,
+        product_name: productName,
+        price: Number(price),
+        supplier: supplier,
+        quantity: 1
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showStatus('success', `✅ ${escapeHtml(productName)} agregado al carrito`);
+        loadCart();
+      } else {
+        showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo agregar al carrito')}`);
+      }
+    })
+    .catch(err => {
+      console.error('Error agregando al carrito:', err);
+      showStatus('error', '❌ Error de conexión al agregar producto');
+    });
+  }
+
+  function loadCart() {
+    fetch('/cart/get')
+      .then(r => r.json())
+      .then(data => { cartData = data || { cart: [], total: 0, total_formatted: '$0.00' }; updateCartDisplay(); })
+      .catch(err => console.error('Error cargando carrito:', err));
+  }
+
+  function updateCartDisplay() {
+    const cartItemsDiv = document.getElementById('cartItems');
+    const cartCountSpan = document.getElementById('cartCount');
+    const cartTotalDiv  = document.getElementById('cartTotal');
+    const totalAmountSpan = document.getElementById('totalAmount');
+
+    const items = Array.isArray(cartData?.cart) ? cartData.cart : [];
+    cartCountSpan.textContent = items.length;
+
+    if (items.length === 0) {
+      cartItemsDiv.innerHTML = '<p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>';
+      cartTotalDiv.style.display = 'none';
+      return;
+    }
+
+    const html = items.map(item => `
+      <div class="cart-item">
+        <div class="cart-item-info">
+          <div class="cart-item-name">${escapeHtml(item.product)}</div>
+          <div class="cart-item-details">
+            ${escapeHtml(item.supplier)} • ${(Number(item.price) || 0).toFixed(2)} c/u
+          </div>
+        </div>
+        <div class="cart-item-controls">
+          <div class="quantity-control">
+            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) - 1})">-</button>
+            <input type="number" class="quantity-input" value="${Number(item.quantity)}" min="1"
+                   onchange="updateQuantity('${item.id}', this.value)">
+            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) + 1})">+</button>
+          </div>
+          <button class="remove-item-btn" onclick="removeFromCart('${item.id}')">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+
+    cartItemsDiv.innerHTML = html;
+    totalAmountSpan.textContent = cartData.total_formatted || (Number(cartData.total) || 0).toFixed(2);
+    cartTotalDiv.style.display = 'block';
+  }
+
+  function updateQuantity(productId, newQuantity) {
+    const q = parseInt(newQuantity, 10);
+    if (isNaN(q) || q < 1) { removeFromCart(productId); return; }
+
+    fetch('/cart/update', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ product_id: productId, quantity: q })
+    })
+    .then(r => r.json())
+    .then(data => data.success ? loadCart() : showStatus('error', `❌ Error actualizando cantidad: ${escapeHtml(data.error || '')}`))
+    .catch(err => { console.error('Error actualizando cantidad:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  function removeFromCart(productId) {
+    fetch('/cart/remove', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ product_id: productId })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) { showStatus('success','✅ Producto eliminado del carrito'); loadCart(); }
+      else { showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo eliminar')}`); }
+    })
+    .catch(err => { console.error('Error eliminando del carrito:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  function clearCart() {
+    if (!confirm('¿Estás seguro de vaciar el carrito?')) return;
+    fetch('/cart/clear')
+      .then(r => r.json())
+      .then(data => data.success ? (showStatus('success','🗑️ Carrito vaciado'), loadCart()) : showStatus('error','❌ Error vaciando carrito'))
+      .catch(err => { console.error('Error vaciando carrito:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  /* =================== DATOS DEL NEGOCIO =================== */
+// Función corregida para guardar datos del negocio
+  function saveBusinessData() {
+      console.log("🚀 Guardando datos del negocio...");
+      
+      // Validación mejorada
+      const requiredFields = [
+          { id: 'businessName', name: 'Nombre del comercio' },
+          { id: 'businessAddress', name: 'Dirección' },
+          { id: 'businessPhone', name: 'Teléfono' }
+      ];
+      
+      for (const field of requiredFields) {
+          const el = document.getElementById(field.id);
+          if (!el.value.trim()) {
+              showStatus('error', `❌ ${field.name} es obligatorio`);
+              el.focus();
+              return;
+          }
+      }
+      
+      // Preparar datos
+      const payload = {
+          businessName: document.getElementById('businessName').value.trim(),
+          contactPerson: document.getElementById('contactPerson').value.trim(),
+          businessAddress: document.getElementById('businessAddress').value.trim(),
+          businessPhone: document.getElementById('businessPhone').value.trim(),
+          businessEmail: document.getElementById('businessEmail').value.trim(),
+      };
+
+      console.log("📦 Datos a enviar:", payload);
+
+      // Guardar en BD
+      fetch('/business/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+      })
+      .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+      .then(({ ok, status, data }) => {
+          console.log("📥 Respuesta del servidor:", { ok, status, data });
+          
+          if (!ok || data.success === false) {
+              const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+              console.error("❌ Error del servidor:", errorMsg);
+              showStatus('error', `❌ Error: ${errorMsg}`);
+              return;
+          }
+          
+          // Éxito - marcar como guardado y cerrar modal
+          businessDataSaved = true;
+          console.log("✅ Datos guardados exitosamente");
+          showStatus('success', '✅ Datos del comercio guardados correctamente');
+          closeBusinessModal();
+          
+          // Opcional: generar PDFs automáticamente después de guardar
+          setTimeout(() => {
+              generatePDFs();
+          }, 1000);
+      })
+      .catch(err => {
+          console.error('❌ Error de conexión:', err);
+          showStatus('error', '❌ Error de conexión al guardar datos');
+      });
+  }
+
+
+// Función para cargar datos existentes
+function loadBusinessData() {
+    console.log("🔍 Cargando datos existentes del negocio...");
+    
+    fetch("/business/get", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+    })
+    .then(r => r.json())
+    .then(data => {
+        console.log("📥 Datos obtenidos:", data);
+        
+        if (data.success && data.data) {
+            const businessData = data.data;
+            
+            // Mapear campos de BD a formulario
+            document.getElementById("businessName").value = businessData.business_name || '';
+            document.getElementById("contactPerson").value = businessData.comercio || businessData.contact_person || '';
+            document.getElementById("businessAddress").value = businessData.address || '';
+            document.getElementById("businessPhone").value = businessData.phone || '';
+            document.getElementById("businessEmail").value = businessData.email || '';
+            
+            // Verificar si los datos están completos
+            const isComplete = !!(
+                businessData.business_name?.trim() && 
+                businessData.address?.trim() && 
+                businessData.phone?.trim()
+            );
+            
+            businessDataSaved = isComplete;
+            console.log(`✅ Datos cargados. Completos: ${isComplete}`);
+        } else {
+            console.log("ℹ️ No hay datos previos del negocio");
+            businessDataSaved = false;
+        }
+    })
+    .catch(err => {
+        console.error("❌ Error cargando datos:", err);
+        businessDataSaved = false;
+    });
+}
+  function populateBusinessForm(d) {
+    // Backend guarda claves: business_name, address, phone, email, contact_person
+    document.getElementById('businessName').value    = d.business_name   || '';
+    document.getElementById('contactPerson').value   = d.contact_person  || '';
+    document.getElementById('businessAddress').value = d.address         || '';
+    document.getElementById('businessPhone').value   = d.phone           || '';
+    document.getElementById('businessEmail').value   = d.email           || '';
+  }
+
+  function openBusinessModal() {
+      const m = document.getElementById('businessModal');
+      m.style.display = 'block';
+      m.setAttribute('aria-hidden', 'false');
+      
+      // Cargar datos existentes cada vez que se abre
+      loadBusinessData();
+      
+      // Focus en el primer campo
+      setTimeout(() => {
+          document.getElementById('businessName').focus();
+      }, 100);
+  }
+
+  function closeBusinessModal() {
+    const m = document.getElementById('businessModal');
+    m.style.display = 'none';
+    m.setAttribute('aria-hidden', 'true');
+  }
+
+  function checkBusinessDataFromDB() {
+      return fetch('/business/check', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+      })
+      .then(r => r.json())
+      .then(data => {
+          console.log('📊 Estado de datos del negocio:', data);
+          return data.has_complete_data || false;
+      })
+      .catch(err => {
+          console.error('Error verificando datos:', err);
+          return false;
+      });
+  }
+  /* =================== PDFs =================== */
+  function checkBusinessDataAndGeneratePDFs() {
+      if (!Array.isArray(cartData.cart) || cartData.cart.length === 0) {
+          showStatus('info', '🛒 Agrega productos al carrito antes de generar PDFs.');
+          return;
+      }
+
+      // Verificar datos del negocio directamente desde la BD
+      checkBusinessDataFromDB()
+          .then(hasCompleteData => {
+              if (hasCompleteData) {
+                  generatePDFs();
+              } else {
+                  showStatus('info', 'ℹ️ Completá los datos del comercio para continuar.');
+                  openBusinessModal();
+              }
+          })
+          .catch(err => {
+              console.error('Error verificando datos del negocio:', err);
+              showStatus('error', '❌ Error verificando datos del comercio');
+          });
+  }
+
+  function generatePDFs() {
+      showStatus('info', '⏳ Generando PDFs por proveedor...');
+      
+      fetch('/cart/generate_pdfs', { method: 'POST' })
+          .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+          .then(({ ok, status, data }) => {
+              console.log('📥 Respuesta generación PDFs:', { ok, status, data });
+              
+              if (!ok || data.success === false) {
+                  // Si faltan datos del negocio, abrir modal
+                  if (data.show_business_form) {
+                      showStatus('info', data.message || 'Completa los datos del comercio');
+                      openBusinessModal();
+                      return;
+                  }
+                  
+                  const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+                  showStatus('error', `❌ Error generando PDFs: ${errorMsg}`);
+                  return;
+              }
+              
+              // Éxito
+              showStatus('success', `✅ ${data.total_suppliers || 0} PDF(s) generados correctamente`);
+              renderPdfResults(data);
+              clearSearch();
+          })
+          .catch(err => {
+              console.error('Error generando PDFs:', err);
+              showStatus('error', '❌ Error de conexión al generar PDFs');
+          });
+  }
+  function renderPdfResults(data) {
+    const wrapper = document.getElementById('pdfResults');
+    const pdfs = Array.isArray(data.pdfs) ? data.pdfs : [];
+    if (pdfs.length === 0) {
+      wrapper.style.display = 'none';
+      return;
+    }
+    const items = pdfs.map(p => {
+      const supplier = escapeHtml(p.supplier || 'Proveedor');
+      const filename = escapeHtml(p.filename || 'pedido.pdf');
+      const url = `/download_pdf/${encodeURIComponent(p.filename)}`; // ← endpoint backend
+      const total = escapeHtml(p.total_formatted || '');
+      const count = Number(p.items_count) || 0;
+
+      // Link de WhatsApp si viene en whatsapp_links
+      const linkWA = (data.whatsapp_links || []).find(w => w.supplier === p.supplier);
+      const waUrl = linkWA ? linkWA.url : buildWhatsAppLink(`Hola, adjunto pedido para ${supplier}. Total: ${total}`);
+
+      return `
+       <div class="pdf-item">
+          <div class="pdf-info">
+            <div class="pdf-supplier">📦 ${supplier}</div>
+            <div class="pdf-details">
+              Archivo: ${filename}${total ? ` • Total: ${total}` : ''}${count ? ` • Ítems: ${count}` : ''}
+            </div>
+          </div>
+          <div class="pdf-actions">
+            <a class="download-btn" href="${url}">⬇️ Descargar PDF</a>
+            <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener noreferrer">🟢 Enviar por WhatsApp</a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    wrapper.innerHTML = `<div class="pdf-results">${items}</div>`;
+    wrapper.style.display = 'block';
+  }
+
+  function buildWhatsAppLink(message) {
+    const text = encodeURIComponent(message || '');
+    return `https://wa.me/?text=${text}`;
+  }
+
+  /* =================== UI HELPERS =================== */
+  function showStatus(type, msg) {
+    const box = document.createElement('div');
+    box.className = `status-message status-${type}`;
+    box.innerHTML = escapeHtml(msg);
+    const host = document.getElementById('statusMessages');
+    host.appendChild(box);
+
+    setTimeout(() => {
+      box.style.opacity = '0';
+      box.style.transform = 'translateY(-6px)';
+      setTimeout(() => box.remove(), 400);
+    }, 3500);
+  }
+
+  // Cerrar modal con click afuera / ESC
+  window.addEventListener('click', (e) => {
+    const modal = document.getElementById('businessModal');
+    if (e.target === modal) closeBusinessModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeBusinessModal();
+  });
+
+// Función para cargar los datos existentes del usuario al abrir el modal
+function loadBusinessData() {
+  console.log("🔍 Cargando datos existentes del negocio...");
+  
+  fetch("/business/get", {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json"
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("📥 Datos obtenidos:", data);
+    
+    if (data.success && data.data) {
+      // Cargar los datos en el formulario
+      const businessData = data.data;
+      
+      if (businessData.business_name) {
+        document.getElementById("businessName").value = businessData.business_name;
+      }
+      if (businessData.comercio) {
+        document.getElementById("contactPerson").value = businessData.comercio;
+      }
+      if (businessData.address) {
+        document.getElementById("businessAddress").value = businessData.address;
+      }
+      if (businessData.phone) {
+        document.getElementById("businessPhone").value = businessData.phone;
+      }
+      if (businessData.email) {
+        document.getElementById("businessEmail").value = businessData.email;
+      }
+      
+      console.log("✅ Datos cargados en el formulario");
+    } else {
+      console.log("ℹ️ No hay datos previos del negocio");
+    }
+  })
+  .catch(err => {
+    console.error("❌ Error cargando datos:", err);
+  });
+}
+
+// Tu función de submit (sin cambios)
+document.getElementById("businessForm").addEventListener("submit", function(e) {
+  console.log("🚀 Evento submit activado");
+  e.preventDefault();
+
+  const formData = {
+    businessName: document.getElementById("businessName").value,
+    contactPerson: document.getElementById("contactPerson").value,
+    businessAddress: document.getElementById("businessAddress").value,
+    businessPhone: document.getElementById("businessPhone").value,
+    businessEmail: document.getElementById("businessEmail").value
+  };
+
+  console.log("📦 Datos a enviar:", formData);
+
+  fetch("/business/save", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(formData)
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("📥 Respuesta:", data);
+    
+    if (data.success) {
+      alert("✅ Datos guardados correctamente");
+      closeBusinessModal();
+    } else {
+      alert("❌ Error al guardar: " + (data.error || "Intente de nuevo"));
+    }
+  })
+  .catch(err => {
+    console.error("❌ Error:", err);
+    alert("❌ Error de conexión");
+  });
+});
+
+
+</script>
   <style>
     /* ====== THEME / RESET ====== */
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -300,8 +918,9 @@
   <div class="container">
     <div class="header">
       <div class="user-badge">👤 {{ user }}</div>
-      <h1>🛍️ Comparador de Precios</h1>
-      <p>Busca productos y arma tu pedido</p>
+      
+      <h1>🛍️ ComparApp+</h1>
+      <p>Compará productos y armá tu pedido sin gastar de más.</p>
     </div>
 
     <div class="main-content">
@@ -362,427 +981,8 @@
     </div> <!-- /main-content -->
   </div> <!-- /container -->
 
-  <script>
-  let cartData = { cart: [], total: 0, suppliers: {} };
-  let businessDataSaved = false;
 
-  // Al cargar
-  document.addEventListener('DOMContentLoaded', () => {
-    loadCart();
-    loadBusinessData();
 
-    // submit del modal de negocio
-    const businessForm = document.getElementById('businessForm');
-    businessForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      saveBusinessData();
-    });
-
-    // Buscar con Enter
-    document.getElementById('searchInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') searchProducts();
-    });
-  });
-
-  /* =================== BUSCADOR =================== */
-  function searchProducts() {
-    const query = document.getElementById('searchInput').value.trim();
-    const resultsDiv = document.getElementById('searchResults');
-
-    if (!query) {
-      showStatus('error', '🔍 Ingresa un término de búsqueda');
-      return;
-    }
-
-    resultsDiv.innerHTML = `
-      <div class="loading">
-        <div class="spinner"></div>
-        Buscando "${escapeHtml(query)}"...
-      </div>
-    `;
-
-    fetch(`/search?q=${encodeURIComponent(query)}`)
-      .then(resp => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-        return resp.json();
-      })
-      .then(data => displayResults(data))
-      .catch(err => {
-        console.error('Error en búsqueda:', err);
-        resultsDiv.innerHTML = `
-          <div class="no-results">
-            <div>
-              <p>❌ Error en la búsqueda: ${escapeHtml(err.message)}</p>
-              <p style="margin-top:10px; font-size:.9rem;">Verifica que haya productos cargados en la base de datos</p>
-            </div>
-          </div>
-        `;
-      });
-  }
-
-  function displayResults(data) {
-    const resultsDiv = document.getElementById('searchResults');
-
-    if (!data || !Array.isArray(data.results) || (data.total|0) === 0) {
-      const message = (data && data.message)
-        ? data.message
-        : `No se encontraron productos que coincidan con "${escapeHtml((data && data.query) ? data.query : '')}"`;
-      resultsDiv.innerHTML = `
-        <div class="no-results">
-          <div>
-            <p>🔍 ${escapeHtml(message)}</p>
-            <p style="margin-top:10px; font-size:.9rem;">Intenta con otros términos de búsqueda</p>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    const resultsInfo = `
-      <div class="results-info">
-        <div>📊 ${data.total} resultado(s) para "<strong>${escapeHtml(data.query || '')}</strong>"</div>
-        <div>${data.suppliers_count || 0} proveedor(es)</div>
-      </div>
-    `;
-
-    const tableHeader = `
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th style="width:40%;">Producto</th>
-            <th style="width:20%;">Precio</th>
-            <th style="width:20%;">Proveedor</th>
-            <th style="width:20%;">Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-
-    const rows = data.results.map(p => `
-      <tr>
-        <td class="product-name-cell">${escapeHtml(p.product)}</td>
-        <td class="price-cell">${escapeHtml(p.price_formatted || (Number(p.price)||0).toFixed(2))}</td>
-        <td class="supplier-cell">${escapeHtml(p.supplier)}</td>
-        <td>
-          <button class="add-to-cart-btn"
-            onclick="addToCart('${p.id}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
-            🛒 Agregar
-          </button>
-        </td>
-      </tr>
-    `).join('');
-
-    resultsDiv.innerHTML = resultsInfo + tableHeader + rows + `</tbody></table>`;
-  }
-
-  function clearSearch() {
-    const input = document.getElementById('searchInput');
-    input.value = '';
-    document.getElementById('searchResults').innerHTML = `
-      <div class="no-results">
-        <p>🔍 Busca productos para agregar a tu carrito</p>
-        <p style="margin-top:10px; font-size:.9rem; color:#28a745;">✨ Encuentra los mejores precios</p>
-      </div>
-    `;
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = String(text ?? '');
-    return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-  }
-
-  /* =================== CARRITO =================== */
-  function addToCart(productId, productName, price, supplier) {
-    fetch('/cart/add', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        product_id: productId,
-        product_name: productName,
-        price: Number(price),
-        supplier: supplier,
-        quantity: 1
-      })
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        showStatus('success', `✅ ${escapeHtml(productName)} agregado al carrito`);
-        loadCart();
-      } else {
-        showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo agregar al carrito')}`);
-      }
-    })
-    .catch(err => {
-      console.error('Error agregando al carrito:', err);
-      showStatus('error', '❌ Error de conexión al agregar producto');
-    });
-  }
-
-  function loadCart() {
-    fetch('/cart/get')
-      .then(r => r.json())
-      .then(data => { cartData = data || { cart: [], total: 0, total_formatted: '$0.00' }; updateCartDisplay(); })
-      .catch(err => console.error('Error cargando carrito:', err));
-  }
-
-  function updateCartDisplay() {
-    const cartItemsDiv = document.getElementById('cartItems');
-    const cartCountSpan = document.getElementById('cartCount');
-    const cartTotalDiv  = document.getElementById('cartTotal');
-    const totalAmountSpan = document.getElementById('totalAmount');
-
-    const items = Array.isArray(cartData?.cart) ? cartData.cart : [];
-    cartCountSpan.textContent = items.length;
-
-    if (items.length === 0) {
-      cartItemsDiv.innerHTML = '<p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>';
-      cartTotalDiv.style.display = 'none';
-      return;
-    }
-
-    const html = items.map(item => `
-      <div class="cart-item">
-        <div class="cart-item-info">
-          <div class="cart-item-name">${escapeHtml(item.product)}</div>
-          <div class="cart-item-details">
-            ${escapeHtml(item.supplier)} • ${(Number(item.price) || 0).toFixed(2)} c/u
-          </div>
-        </div>
-        <div class="cart-item-controls">
-          <div class="quantity-control">
-            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) - 1})">-</button>
-            <input type="number" class="quantity-input" value="${Number(item.quantity)}" min="1"
-                   onchange="updateQuantity('${item.id}', this.value)">
-            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) + 1})">+</button>
-          </div>
-          <button class="remove-item-btn" onclick="removeFromCart('${item.id}')">🗑️</button>
-        </div>
-      </div>
-    `).join('');
-
-    cartItemsDiv.innerHTML = html;
-    totalAmountSpan.textContent = cartData.total_formatted || (Number(cartData.total) || 0).toFixed(2);
-    cartTotalDiv.style.display = 'block';
-  }
-
-  function updateQuantity(productId, newQuantity) {
-    const q = parseInt(newQuantity, 10);
-    if (isNaN(q) || q < 1) { removeFromCart(productId); return; }
-
-    fetch('/cart/update', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ product_id: productId, quantity: q })
-    })
-    .then(r => r.json())
-    .then(data => data.success ? loadCart() : showStatus('error', `❌ Error actualizando cantidad: ${escapeHtml(data.error || '')}`))
-    .catch(err => { console.error('Error actualizando cantidad:', err); showStatus('error','❌ Error de conexión'); });
-  }
-
-  function removeFromCart(productId) {
-    fetch('/cart/remove', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ product_id: productId })
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) { showStatus('success','✅ Producto eliminado del carrito'); loadCart(); }
-      else { showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo eliminar')}`); }
-    })
-    .catch(err => { console.error('Error eliminando del carrito:', err); showStatus('error','❌ Error de conexión'); });
-  }
-
-  function clearCart() {
-    if (!confirm('¿Estás seguro de vaciar el carrito?')) return;
-    fetch('/cart/clear')
-      .then(r => r.json())
-      .then(data => data.success ? (showStatus('success','🗑️ Carrito vaciado'), loadCart()) : showStatus('error','❌ Error vaciando carrito'))
-      .catch(err => { console.error('Error vaciando carrito:', err); showStatus('error','❌ Error de conexión'); });
-  }
-
-  /* =================== DATOS DEL NEGOCIO =================== */
-  function loadBusinessData() {
-    fetch('/business/info')
-      .then(resp => resp.json())
-      .then(d => {
-        if (d && Object.keys(d).length > 0) {
-          businessDataSaved = true;
-          populateBusinessForm(d);
-        } else {
-          businessDataSaved = false;
-        }
-      })
-      .catch(err => {
-        console.error('Error cargando datos del negocio:', err);
-        businessDataSaved = false;
-      });
-  }
-
-  function populateBusinessForm(d) {
-    // Backend guarda claves: business_name, address, phone, email, contact_person
-    document.getElementById('businessName').value    = d.business_name   || '';
-    document.getElementById('contactPerson').value   = d.contact_person  || '';
-    document.getElementById('businessAddress').value = d.address         || '';
-    document.getElementById('businessPhone').value   = d.phone           || '';
-    document.getElementById('businessEmail').value   = d.email           || '';
-  }
-
-  function openBusinessModal() {
-    const m = document.getElementById('businessModal');
-    m.style.display = 'block';
-    m.setAttribute('aria-hidden', 'false');
-  }
-
-  function closeBusinessModal() {
-    const m = document.getElementById('businessModal');
-    m.style.display = 'none';
-    m.setAttribute('aria-hidden', 'true');
-  }
-
-  function saveBusinessData() {
-    // Validación simple
-    const required = ['businessName','businessAddress','businessPhone'];
-    for (const id of required) {
-      const el = document.getElementById(id);
-      if (!el.value.trim()) {
-        showStatus('error', '❌ Completa los campos obligatorios (*)');
-        el.focus();
-        return;
-      }
-    }
-    // Mapear nombres del form → claves del backend
-    const payload = {
-      business_name: document.getElementById('businessName').value.trim(),
-      contact_person: document.getElementById('contactPerson').value.trim(),
-      address: document.getElementById('businessAddress').value.trim(),
-      phone: document.getElementById('businessPhone').value.trim(),
-      email: document.getElementById('businessEmail').value.trim(),
-    };
-
-    // Usamos /business/validate para validar y guardar
-    fetch('/business/validate', {
-      method:'POST', headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(r => r.json().then(j => ({ ok: r.ok, j })))
-    .then(({ ok, j }) => {
-      if (!ok || j.success === false) {
-        const msg = j.message || (Array.isArray(j.errors) ? j.errors.join(', ') : 'Error guardando');
-        showStatus('error', `❌ ${escapeHtml(msg)}`);
-        return;
-      }
-      businessDataSaved = true;
-      showStatus('success','✅ Datos del comercio guardados');
-      closeBusinessModal();
-    })
-    .catch(err => {
-      console.error('Error guardando datos:', err);
-      showStatus('error','❌ Error de conexión al guardar datos');
-    });
-  }
-
-  /* =================== PDFs =================== */
-  function checkBusinessDataAndGeneratePDFs() {
-    if (!Array.isArray(cartData.cart) || cartData.cart.length === 0) {
-      showStatus('info','🛒 Agrega productos al carrito antes de generar PDFs.');
-      return;
-    }
-    if (!businessDataSaved) {
-      showStatus('info','ℹ️ Completá los datos del comercio para continuar.');
-      openBusinessModal();
-      return;
-    }
-    generatePDFs();
-  }
-
-  function generatePDFs() {
-    showStatus('info','⏳ Generando PDFs por proveedor...');
-    fetch('/cart/generate_pdfs', { method:'POST' })
-      .then(r => r.json().then(j => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => {
-        if (!ok || j.success === false) {
-          showStatus('error', `❌ Error generando PDFs: ${escapeHtml(j.error || j.message || '')}`);
-          return;
-        }
-        showStatus('success','✅ PDFs generados');
-        renderPdfResults(j);
-      })
-      .catch(err => {
-        console.error('Error generando PDFs:', err);
-        showStatus('error','❌ Error de conexión al generar PDFs');
-      });
-  }
-
-  function renderPdfResults(data) {
-    const wrapper = document.getElementById('pdfResults');
-    const pdfs = Array.isArray(data.pdfs) ? data.pdfs : [];
-    if (pdfs.length === 0) {
-      wrapper.style.display = 'none';
-      return;
-    }
-    const items = pdfs.map(p => {
-      const supplier = escapeHtml(p.supplier || 'Proveedor');
-      const filename = escapeHtml(p.filename || 'pedido.pdf');
-      const url = `/download_pdf/${encodeURIComponent(p.filename)}`; // ← endpoint backend
-      const total = escapeHtml(p.total_formatted || '');
-      const count = Number(p.items_count) || 0;
-
-      // Link de WhatsApp si viene en whatsapp_links
-      const linkWA = (data.whatsapp_links || []).find(w => w.supplier === p.supplier);
-      const waUrl = linkWA ? linkWA.url : buildWhatsAppLink(`Hola, adjunto pedido para ${supplier}. Total: ${total}`);
-
-      return `
-       <div class="pdf-item">
-          <div class="pdf-info">
-            <div class="pdf-supplier">📦 ${supplier}</div>
-            <div class="pdf-details">
-              Archivo: ${filename}${total ? ` • Total: ${total}` : ''}${count ? ` • Ítems: ${count}` : ''}
-            </div>
-          </div>
-          <div class="pdf-actions">
-            <a class="download-btn" href="${url}">⬇️ Descargar PDF</a>
-            <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener noreferrer">🟢 Enviar por WhatsApp</a>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    wrapper.innerHTML = `<div class="pdf-results">${items}</div>`;
-    wrapper.style.display = 'block';
-  }
-
-  function buildWhatsAppLink(message) {
-    const text = encodeURIComponent(message || '');
-    return `https://wa.me/?text=${text}`;
-  }
-
-  /* =================== UI HELPERS =================== */
-  function showStatus(type, msg) {
-    const box = document.createElement('div');
-    box.className = `status-message status-${type}`;
-    box.innerHTML = escapeHtml(msg);
-    const host = document.getElementById('statusMessages');
-    host.appendChild(box);
-
-    setTimeout(() => {
-      box.style.opacity = '0';
-      box.style.transform = 'translateY(-6px)';
-      setTimeout(() => box.remove(), 400);
-    }, 3500);
-  }
-
-  // Cerrar modal con click afuera / ESC
-  window.addEventListener('click', (e) => {
-    const modal = document.getElementById('businessModal');
-    if (e.target === modal) closeBusinessModal();
-  });
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeBusinessModal();
-  });
-</script>
 
 </body>
 </html>

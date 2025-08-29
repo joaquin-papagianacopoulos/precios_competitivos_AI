@@ -526,10 +526,6 @@
                         📁 Cargar Lista de Precios
                     </h3>
                     <form id="uploadForm" class="upload-form">
-                        <div class="form-group">
-                            <label class="form-label" for="supplierName">Nombre del Proveedor</label>
-                            <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required>
-                        </div>
                         <form id="uploadForm" class="upload-form">
                         <div class="form-group">
                             <label class="form-label" for="supplierName">Nombre del Proveedor</label>
@@ -547,19 +543,13 @@
                             <label class="form-label" for="supplierPhone">Teléfono del Proveedor</label>
                             <input type="tel" id="supplierPhone" class="form-input" placeholder="Ej: +54 11 5555-5555">
                         </div>
-
                         <div class="form-group">
-                            <label class="form-label">Archivo Excel</label>
-                            <div class="file-input-wrapper">
-                            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" required>
-                            <button type="button" class="file-input-button" onclick="document.getElementById('fileInput').click()">
-                                📊 Seleccionar Archivo
-                            </button>
-                            </div>
+                            <label class="form-label" for="supplierEmail">Email</label>
+                            <input type="tel" id="supplierEmail" class="form-input" placeholder="Ej: ejemplo@gmail.com">
                         </div>
 
-                        <button type="submit" class="submit-btn">🚀 Cargar Lista</button>
-                        </form>
+
+
 
                         
                         <div class="form-group">
@@ -648,7 +638,7 @@
                 const supplierName = document.getElementById('supplierName').value;
                 const supplierAddress = document.getElementById('supplierAddress').value;   // NUEVO
                 const supplierPhone = document.getElementById('supplierPhone').value;       // NUEVO
-
+                const supplierEmail = document.getElementById('supplierEmail').value;   
                 if (!fileInput.files[0]) {
                     showStatus('error', 'Por favor selecciona un archivo');
                     return;
@@ -658,7 +648,7 @@
                 formData.append('supplier_name', supplierName);
                 formData.append('supplier_address', supplierAddress); // NUEVO
                 formData.append('supplier_phone', supplierPhone);     // NUEVO
-
+                formData.append('supplier_email', supplierEmail); 
             
             showStatus('info', '⏳ Procesando archivo...');
             
