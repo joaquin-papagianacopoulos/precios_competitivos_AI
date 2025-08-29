@@ -1204,7 +1204,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     <b>Proveedor:</b> {supplier_name}<br/>
     <b>Dirección:</b> {supplier_address}<br/>
     <b>Teléfono:</b> {supplier_phone}<br/>
-    <b>Email:</b> {supplier_email}<br/>
+
     """
     story.append(Paragraph(supplier_info_text, styles['Normal']))
     story.append(Spacer(1, 20))

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ComparApp+</title>
-    <script>
+<script>
   let cartData = { cart: [], total: 0, suppliers: {} };
   let businessDataSaved = false;
 
@@ -44,7 +44,42 @@
         }
     });
   });
+  function loadListsInfo() {
+            fetch('/lists')
+                .then(response => response.json())
+                .then(data => {
+                    const listsDiv = document.getElementById('loadedLists');
+                    if (data.total === 0) {
+                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
+                        updateStats(0, 0);
+                        return;
+                    }
 
+                    let totalProducts = 0;
+                    const html = data.lists.map(list => {
+                        totalProducts += list.total_products;
+                        return `
+                         <div class="list-item">
+                            <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
+                            <div class="list-name">${list.supplier}</div>
+                            <div class="list-info">
+                            ${list.total_products} productos<br>
+                            <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
+                            </div>
+                        </div>
+                        `;
+                        
+                    }).join('');
+
+                    listsDiv.innerHTML = html;
+                    updateStats(data.total, totalProducts);
+                })
+                .catch(error => console.error('Error cargando listas:', error));
+        }
+  function updateStats(totalLists, totalProducts) {
+              document.getElementById('totalLists').textContent = totalLists;
+              document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
+          }
   /* =================== BUSCADOR =================== */
   function searchProducts() {
     const query = document.getElementById('searchInput').value.trim();
@@ -701,7 +736,10 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
       padding: 2.5rem 2rem; position: relative;
     }
     .sidebar::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-gradient); }
-
+    .loaded-lists {
+      margin-top:30px;
+            margin-bottom: 30px;
+        }
     .section-title {
       font-size:1.4rem; font-weight:700; color: var(--text-primary);
       margin-bottom:1.5rem; display:flex; align-items:center; gap:.75rem; position:relative;
@@ -824,6 +862,30 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
       display:flex; justify-content:space-between; align-items:center; padding:1.5rem; margin-bottom:1rem; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
       border-radius:12px; border:1px solid #dee2e6; transition: var(--transition);
     }
+            .stats-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 5px 0;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
     .pdf-item:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,.1); }
     .pdf-item:last-child { margin-bottom:0; }
     .pdf-info { flex:1; }
@@ -955,31 +1017,64 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
         <div id="pdfResults" style="display:none;"></div>
       </div>
 
-      <div class="sidebar">
-        <!-- Cart Section -->
-        <div class="cart-section">
-          <div class="cart-header">
-            <div class="cart-title">
-              🛒 Carrito
-              <span class="cart-count" id="cartCount">0</span>
+        <div class="sidebar">
+          <!-- Cart Section -->
+          <div class="cart-section">
+            <div class="cart-header">
+              <div class="cart-title">
+                🛒 Carrito
+                <span class="cart-count" id="cartCount">0</span>
+              </div>
             </div>
-          </div>
-          <div id="cartItems">
-            <p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>
-          </div>
-          <div id="cartTotal" style="display:none;">
-            <div class="cart-total">
-              <div class="cart-total-amount" id="totalAmount">$0.00</div>
+
+            <!-- Items -->
+            <div id="cartItems">
+              <p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>
             </div>
-            <div class="cart-actions">
-              <button class="cart-btn generate-pdf-btn" onclick="checkBusinessDataAndGeneratePDFs()">📄 Generar PDFs</button>
-              <button class="cart-btn clear-cart-btn" onclick="clearCart()">🗑️ Vaciar Carrito</button>
+
+            <!-- Total y acciones (solo se muestra si hay productos) -->
+            <div id="cartTotal" style="display:none;">
+              <div class="cart-total">
+                <div class="cart-total-amount" id="totalAmount">$0.00</div>
+              </div>
+              <div class="cart-actions">
+                <button class="cart-btn generate-pdf-btn" onclick="checkBusinessDataAndGeneratePDFs()">📄 Generar PDFs</button>
+                <button class="cart-btn clear-cart-btn" onclick="clearCart()">🗑️ Vaciar Carrito</button>
+              </div>
             </div>
+
+            <!-- Listas cargadas -->
+            <div class="loaded-lists">
+              <h4 class="section-title">📋 Listas Cargadas</h4>
+              <div id="loadedLists">
+                <p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>
+              </div>
+            </div>
+
+            <!-- Estadísticas -->
+            <div class="stats-section">
+              <h4 style="margin-bottom: 15px; color: #2c3e50;">📊 Estadísticas</h4>
+              <div class="stat-item">
+                <span class="stat-label">Total listas:</span>
+                <span class="stat-value" id="totalLists">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Productos totales:</span>
+                <span class="stat-value" id="totalProducts">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Última búsqueda:</span>
+                <span class="stat-value" id="lastSearch">-</span>
+              </div>
+            </div>
+
           </div>
         </div>
+
       </div> <!-- /sidebar -->
     </div> <!-- /main-content -->
   </div> <!-- /container -->
+
 
 
 
