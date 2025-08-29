@@ -859,10 +859,10 @@ def cleanup_temp_files():
         })
 def get_connection():
     return mysql.connector.connect(
-        host="localhost",      # Cambiá si tu servidor MySQL no es local
-        user="root",           # Usuario de MySQL
-        password="12345678",# Contraseña de MySQL
-        database="login_db"    # Base de datos creada
+        host="gateway01.us-east-1.prod.aws.tidbcloud.com",      # Cambiá si tu servidor MySQL no es local
+        user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
+        password="TI03zW0skLEYT7Go",# Contraseña de MySQL
+        database="test"    # Base de datos creada
     )
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
