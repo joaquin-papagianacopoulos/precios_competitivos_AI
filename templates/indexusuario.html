@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ComparApp+</title>
+<script>
+  let cartData = { cart: [], total: 0, suppliers: {} };
+  let businessDataSaved = false;
+
+  // Al cargar
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCart();
+    loadBusinessData();
+    loadStats();
+    // submit del modal de negocio
+    const businessForm = document.getElementById('businessForm');
+    businessForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      saveBusinessData();
+    });
+
+    // Buscar con Enter
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') searchProducts();
+    });
+    const requiredFields = ['businessName', 'businessAddress', 'businessPhone'];
+    requiredFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.addEventListener('blur', function() {
+                if (!this.value.trim()) {
+                    this.style.borderColor = '#dc3545';
+                } else {
+                    this.style.borderColor = '#28a745';
+                }
+            });
+            
+            field.addEventListener('input', function() {
+                if (this.value.trim()) {
+                    this.style.borderColor = '#ced4da';
+                }
+            });
+        }
+    });
+  });
+  function loadListsInfo() {
+            fetch('/lists')
+                .then(response => response.json())
+                .then(data => {
+                    const listsDiv = document.getElementById('loadedLists');
+                    if (data.total === 0) {
+                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
+                        updateStats(0, 0);
+                        return;
+                    }
+
+                    let totalProducts = 0;
+                    const html = data.lists.map(list => {
+                        totalProducts += list.total_products;
+                        return `
+                         <div class="list-item">
+                            <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
+                            <div class="list-name">${list.supplier}</div>
+                            <div class="list-info">
+                            ${list.total_products} productos<br>
+                            <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
+                            </div>
+                        </div>
+                        `;
+                        
+                    }).join('');
+
+                    listsDiv.innerHTML = html;
+                    updateStats(data.total, totalProducts);
+                })
+                .catch(error => console.error('Error cargando listas:', error));
+        }
+  function updateStats(totalLists, totalProducts) {
+              document.getElementById('totalLists').textContent = totalLists;
+              document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
+          }
+  /* =================== BUSCADOR =================== */
+  function searchProducts() {
+    const query = document.getElementById('searchInput').value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!query) {
+      showStatus('error', '🔍 Ingresa un término de búsqueda');
+      return;
+    }
+
+    resultsDiv.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        Buscando "${escapeHtml(query)}"...
+      </div>
+    `;
+
+    fetch(`/search?q=${encodeURIComponent(query)}`)
+  .then(resp => {
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    return resp.json();
+  })
+  .then(data => {
+    displayResults(data);
+    // 🔹 NUEVO: mostrar "Última búsqueda" (texto del usuario)
+    document.getElementById('lastSearch').textContent = query;
+    // Opcional: refrescar contadores si cambian por otro proceso
+    // loadStats();
+  })
+  .catch(/* ... */);
+
+
+    fetch(`/search?q=${encodeURIComponent(query)}`)
+      .then(resp => {
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        return resp.json();
+      })
+      .then(data => displayResults(data))
+      .catch(err => {
+        console.error('Error en búsqueda:', err);
+        resultsDiv.innerHTML = `
+          <div class="no-results">
+            <div>
+              <p>❌ Error en la búsqueda: ${escapeHtml(err.message)}</p>
+              <p style="margin-top:10px; font-size:.9rem;">Verifica que haya productos cargados en la base de datos</p>
+            </div>
+          </div>
+        `;
+      });
+  }
+
+  function displayResults(data) {
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!data || !Array.isArray(data.results) || (data.total|0) === 0) {
+      const message = (data && data.message)
+        ? data.message
+        : `No se encontraron productos que coincidan con "${escapeHtml((data && data.query) ? data.query : '')}"`;
+      resultsDiv.innerHTML = `
+        <div class="no-results">
+          <div>
+            <p>🔍 ${escapeHtml(message)}</p>
+            <p style="margin-top:10px; font-size:.9rem;">Intenta con otros términos de búsqueda</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const resultsInfo = `
+      <div class="results-info">
+        <div>📊 ${data.total} resultado(s) para "<strong>${escapeHtml(data.query || '')}</strong>"</div>
+        <div>${data.suppliers_count || 0} proveedor(es)</div>
+      </div>
+    `;
+
+    const tableHeader = `
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th style="width:40%;">Producto</th>
+            <th style="width:20%;">Precio</th>
+            <th style="width:20%;">Proveedor</th>
+            <th style="width:20%;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    const rows = data.results.map(p => `
+      <tr>
+        <td class="product-name-cell">${escapeHtml(p.product)}</td>
+        <td class="price-cell">${escapeHtml(p.price_formatted || (Number(p.price)||0).toFixed(2))}</td>
+        <td class="supplier-cell">${escapeHtml(p.supplier)}</td>
+        <td>
+          <button class="add-to-cart-btn"
+            onclick="addToCart('${p.id}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
+            🛒 Agregar
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    resultsDiv.innerHTML = resultsInfo + tableHeader + rows + `</tbody></table>`;
+  }
+
+  function clearSearch() {
+    const input = document.getElementById('searchInput');
+    input.value = '';
+    document.getElementById('searchResults').innerHTML = `
+      <div class="no-results">
+        <p>🔍 Busca productos para agregar a tu carrito</p>
+        <p style="margin-top:10px; font-size:.9rem; color:#28a745;">✨ Encuentra los mejores precios</p>
+      </div>
+    `;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = String(text ?? '');
+    return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+  }
+
+  /* =================== CARRITO =================== */
+  function addToCart(productId, productName, price, supplier) {
+    fetch('/cart/add', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        product_id: productId,
+        product_name: productName,
+        price: Number(price),
+        supplier: supplier,
+        quantity: 1
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showStatus('success', `✅ ${escapeHtml(productName)} agregado al carrito`);
+        loadCart();
+      } else {
+        showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo agregar al carrito')}`);
+      }
+    })
+    .catch(err => {
+      console.error('Error agregando al carrito:', err);
+      showStatus('error', '❌ Error de conexión al agregar producto');
+    });
+  }
+
+  function loadCart() {
+    fetch('/cart/get')
+      .then(r => r.json())
+      .then(data => { cartData = data || { cart: [], total: 0, total_formatted: '$0.00' }; updateCartDisplay(); })
+      .catch(err => console.error('Error cargando carrito:', err));
+  }
+
+  function updateCartDisplay() {
+    const cartItemsDiv = document.getElementById('cartItems');
+    const cartCountSpan = document.getElementById('cartCount');
+    const cartTotalDiv  = document.getElementById('cartTotal');
+    const totalAmountSpan = document.getElementById('totalAmount');
+
+    const items = Array.isArray(cartData?.cart) ? cartData.cart : [];
+    cartCountSpan.textContent = items.length;
+
+    if (items.length === 0) {
+      cartItemsDiv.innerHTML = '<p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>';
+      cartTotalDiv.style.display = 'none';
+      return;
+    }
+
+    const html = items.map(item => `
+      <div class="cart-item">
+        <div class="cart-item-info">
+          <div class="cart-item-name">${escapeHtml(item.product)}</div>
+          <div class="cart-item-details">
+            ${escapeHtml(item.supplier)} • ${(Number(item.price) || 0).toFixed(2)} c/u
+          </div>
+        </div>
+        <div class="cart-item-controls">
+          <div class="quantity-control">
+            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) - 1})">-</button>
+            <input type="number" class="quantity-input" value="${Number(item.quantity)}" min="1"
+                   onchange="updateQuantity('${item.id}', this.value)">
+            <button class="quantity-btn" onclick="updateQuantity('${item.id}', ${Number(item.quantity) + 1})">+</button>
+          </div>
+          <button class="remove-item-btn" onclick="removeFromCart('${item.id}')">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+
+    cartItemsDiv.innerHTML = html;
+    totalAmountSpan.textContent = cartData.total_formatted || (Number(cartData.total) || 0).toFixed(2);
+    cartTotalDiv.style.display = 'block';
+  }
+
+  function updateQuantity(productId, newQuantity) {
+    const q = parseInt(newQuantity, 10);
+    if (isNaN(q) || q < 1) { removeFromCart(productId); return; }
+
+    fetch('/cart/update', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ product_id: productId, quantity: q })
+    })
+    .then(r => r.json())
+    .then(data => data.success ? loadCart() : showStatus('error', `❌ Error actualizando cantidad: ${escapeHtml(data.error || '')}`))
+    .catch(err => { console.error('Error actualizando cantidad:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  function removeFromCart(productId) {
+    fetch('/cart/remove', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ product_id: productId })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) { showStatus('success','✅ Producto eliminado del carrito'); loadCart(); }
+      else { showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo eliminar')}`); }
+    })
+    .catch(err => { console.error('Error eliminando del carrito:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  function clearCart() {
+    if (!confirm('¿Estás seguro de vaciar el carrito?')) return;
+    fetch('/cart/clear')
+      .then(r => r.json())
+      .then(data => data.success ? (showStatus('success','🗑️ Carrito vaciado'), loadCart()) : showStatus('error','❌ Error vaciando carrito'))
+      .catch(err => { console.error('Error vaciando carrito:', err); showStatus('error','❌ Error de conexión'); });
+  }
+
+  /* =================== DATOS DEL NEGOCIO =================== */
+// Función corregida para guardar datos del negocio
+  function saveBusinessData() {
+      console.log("🚀 Guardando datos del negocio...");
+      
+      // Validación mejorada
+      const requiredFields = [
+          { id: 'businessName', name: 'Nombre del comercio' },
+          { id: 'businessAddress', name: 'Dirección' },
+          { id: 'businessPhone', name: 'Teléfono' }
+      ];
+      
+      for (const field of requiredFields) {
+          const el = document.getElementById(field.id);
+          if (!el.value.trim()) {
+              showStatus('error', `❌ ${field.name} es obligatorio`);
+              el.focus();
+              return;
+          }
+      }
+      
+      // Preparar datos
+      const payload = {
+          businessName: document.getElementById('businessName').value.trim(),
+          contactPerson: document.getElementById('contactPerson').value.trim(),
+          businessAddress: document.getElementById('businessAddress').value.trim(),
+          businessPhone: document.getElementById('businessPhone').value.trim(),
+          businessEmail: document.getElementById('businessEmail').value.trim(),
+      };
+
+      console.log("📦 Datos a enviar:", payload);
+
+      // Guardar en BD
+      fetch('/business/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+      })
+      .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+      .then(({ ok, status, data }) => {
+          console.log("📥 Respuesta del servidor:", { ok, status, data });
+          
+          if (!ok || data.success === false) {
+              const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+              console.error("❌ Error del servidor:", errorMsg);
+              showStatus('error', `❌ Error: ${errorMsg}`);
+              return;
+          }
+          
+          // Éxito - marcar como guardado y cerrar modal
+          businessDataSaved = true;
+          console.log("✅ Datos guardados exitosamente");
+          showStatus('success', '✅ Datos del comercio guardados correctamente');
+          closeBusinessModal();
+          
+          // Opcional: generar PDFs automáticamente después de guardar
+          setTimeout(() => {
+              generatePDFs();
+          }, 1000);
+      })
+      .catch(err => {
+          console.error('❌ Error de conexión:', err);
+          showStatus('error', '❌ Error de conexión al guardar datos');
+      });
+  }
+
+
+// Función para cargar datos existentes
+function loadBusinessData() {
+    console.log("🔍 Cargando datos existentes del negocio...");
+    
+    fetch("/business/get", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+    })
+    .then(r => r.json())
+    .then(data => {
+        console.log("📥 Datos obtenidos:", data);
+        
+        if (data.success && data.data) {
+            const businessData = data.data;
+            
+            // Mapear campos de BD a formulario
+            document.getElementById("businessName").value = businessData.business_name || '';
+            document.getElementById("contactPerson").value = businessData.comercio || businessData.contact_person || '';
+            document.getElementById("businessAddress").value = businessData.address || '';
+            document.getElementById("businessPhone").value = businessData.phone || '';
+            document.getElementById("businessEmail").value = businessData.email || '';
+            
+            // Verificar si los datos están completos
+            const isComplete = !!(
+                businessData.business_name?.trim() && 
+                businessData.address?.trim() && 
+                businessData.phone?.trim()
+            );
+            
+            businessDataSaved = isComplete;
+            console.log(`✅ Datos cargados. Completos: ${isComplete}`);
+        } else {
+            console.log("ℹ️ No hay datos previos del negocio");
+            businessDataSaved = false;
+        }
+    })
+    .catch(err => {
+        console.error("❌ Error cargando datos:", err);
+        businessDataSaved = false;
+    });
+}
+  function populateBusinessForm(d) {
+    // Backend guarda claves: business_name, address, phone, email, contact_person
+    document.getElementById('businessName').value    = d.business_name   || '';
+    document.getElementById('contactPerson').value   = d.contact_person  || '';
+    document.getElementById('businessAddress').value = d.address         || '';
+    document.getElementById('businessPhone').value   = d.phone           || '';
+    document.getElementById('businessEmail').value   = d.email           || '';
+  }
+
+  function openBusinessModal() {
+      const m = document.getElementById('businessModal');
+      m.style.display = 'block';
+      m.setAttribute('aria-hidden', 'false');
+      
+      // Cargar datos existentes cada vez que se abre
+      loadBusinessData();
+      
+      // Focus en el primer campo
+      setTimeout(() => {
+          document.getElementById('businessName').focus();
+      }, 100);
+  }
+
+  function closeBusinessModal() {
+    const m = document.getElementById('businessModal');
+    m.style.display = 'none';
+    m.setAttribute('aria-hidden', 'true');
+  }
+
+  function checkBusinessDataFromDB() {
+      return fetch('/business/check', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+      })
+      .then(r => r.json())
+      .then(data => {
+          console.log('📊 Estado de datos del negocio:', data);
+          return data.has_complete_data || false;
+      })
+      .catch(err => {
+          console.error('Error verificando datos:', err);
+          return false;
+      });
+  }
+  /* =================== PDFs =================== */
+  function checkBusinessDataAndGeneratePDFs() {
+      if (!Array.isArray(cartData.cart) || cartData.cart.length === 0) {
+          showStatus('info', '🛒 Agrega productos al carrito antes de generar PDFs.');
+          return;
+      }
+
+      // Verificar datos del negocio directamente desde la BD
+      checkBusinessDataFromDB()
+          .then(hasCompleteData => {
+              if (hasCompleteData) {
+                  generatePDFs();
+              } else {
+                  showStatus('info', 'ℹ️ Completá los datos del comercio para continuar.');
+                  openBusinessModal();
+              }
+          })
+          .catch(err => {
+              console.error('Error verificando datos del negocio:', err);
+              showStatus('error', '❌ Error verificando datos del comercio');
+          });
+  }
+
+  function generatePDFs() {
+      showStatus('info', '⏳ Generando PDFs por proveedor...');
+      
+      fetch('/cart/generate_pdfs', { method: 'POST' })
+          .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+          .then(({ ok, status, data }) => {
+              console.log('📥 Respuesta generación PDFs:', { ok, status, data });
+              
+              if (!ok || data.success === false) {
+                  // Si faltan datos del negocio, abrir modal
+                  if (data.show_business_form) {
+                      showStatus('info', data.message || 'Completa los datos del comercio');
+                      openBusinessModal();
+                      return;
+                  }
+                  
+                  const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+                  showStatus('error', `❌ Error generando PDFs: ${errorMsg}`);
+                  return;
+              }
+              
+              // Éxito
+              showStatus('success', `✅ ${data.total_suppliers || 0} PDF(s) generados correctamente`);
+              renderPdfResults(data);
+              clearSearch();
+          })
+          .catch(err => {
+              console.error('Error generando PDFs:', err);
+              showStatus('error', '❌ Error de conexión al generar PDFs');
+          });
+  }
+  function renderPdfResults(data) {
+    const wrapper = document.getElementById('pdfResults');
+    const pdfs = Array.isArray(data.pdfs) ? data.pdfs : [];
+    if (pdfs.length === 0) {
+      wrapper.style.display = 'none';
+      return;
+    }
+    const items = pdfs.map(p => {
+      const supplier = escapeHtml(p.supplier || 'Proveedor');
+      const filename = escapeHtml(p.filename || 'pedido.pdf');
+      const url = `/download_pdf/${encodeURIComponent(p.filename)}`; // ← endpoint backend
+      const total = escapeHtml(p.total_formatted || '');
+      const count = Number(p.items_count) || 0;
+
+      // Link de WhatsApp si viene en whatsapp_links
+      const linkWA = (data.whatsapp_links || []).find(w => w.supplier === p.supplier);
+      const waUrl = linkWA ? linkWA.url : buildWhatsAppLink(`Hola, adjunto pedido para ${supplier}. Total: ${total}`);
+
+      return `
+       <div class="pdf-item">
+          <div class="pdf-info">
+            <div class="pdf-supplier">📦 ${supplier}</div>
+            <div class="pdf-details">
+              Archivo: ${filename}${total ? ` • Total: ${total}` : ''}${count ? ` • Ítems: ${count}` : ''}
+            </div>
+          </div>
+          <div class="pdf-actions">
+            <a class="download-btn" href="${url}">⬇️ Descargar PDF</a>
+            <a class="whatsapp-btn" href="${waUrl}" target="_blank" rel="noopener noreferrer">🟢 Enviar por WhatsApp</a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    wrapper.innerHTML = `<div class="pdf-results">${items}</div>`;
+    wrapper.style.display = 'block';
+  }
+
+  function buildWhatsAppLink(message) {
+    const text = encodeURIComponent(message || '');
+    return `https://wa.me/?text=${text}`;
+  }
+
+  /* =================== UI HELPERS =================== */
+  function showStatus(type, msg) {
+    const box = document.createElement('div');
+    box.className = `status-message status-${type}`;
+    box.innerHTML = escapeHtml(msg);
+    const host = document.getElementById('statusMessages');
+    host.appendChild(box);
+
+    setTimeout(() => {
+      box.style.opacity = '0';
+      box.style.transform = 'translateY(-6px)';
+      setTimeout(() => box.remove(), 400);
+    }, 3500);
+  }
+
+  // Cerrar modal con click afuera / ESC
+  window.addEventListener('click', (e) => {
+    const modal = document.getElementById('businessModal');
+    if (e.target === modal) closeBusinessModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeBusinessModal();
+  });
+
+// Función para cargar los datos existentes del usuario al abrir el modal
+function loadBusinessData() {
+  console.log("🔍 Cargando datos existentes del negocio...");
+  
+  fetch("/business/get", {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json"
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("📥 Datos obtenidos:", data);
+    
+    if (data.success && data.data) {
+      // Cargar los datos en el formulario
+      const businessData = data.data;
+      
+      if (businessData.business_name) {
+        document.getElementById("businessName").value = businessData.business_name;
+      }
+      if (businessData.comercio) {
+        document.getElementById("contactPerson").value = businessData.comercio;
+      }
+      if (businessData.address) {
+        document.getElementById("businessAddress").value = businessData.address;
+      }
+      if (businessData.phone) {
+        document.getElementById("businessPhone").value = businessData.phone;
+      }
+      if (businessData.email) {
+        document.getElementById("businessEmail").value = businessData.email;
+      }
+      
+      console.log("✅ Datos cargados en el formulario");
+    } else {
+      console.log("ℹ️ No hay datos previos del negocio");
+    }
+  })
+  .catch(err => {
+    console.error("❌ Error cargando datos:", err);
+  });
+}
+
+// Tu función de submit (sin cambios)
+document.getElementById("businessForm").addEventListener("submit", function(e) {
+  console.log("🚀 Evento submit activado");
+  e.preventDefault();
+
+  const formData = {
+    businessName: document.getElementById("businessName").value,
+    contactPerson: document.getElementById("contactPerson").value,
+    businessAddress: document.getElementById("businessAddress").value,
+    businessPhone: document.getElementById("businessPhone").value,
+    businessEmail: document.getElementById("businessEmail").value
+  };
+
+  console.log("📦 Datos a enviar:", formData);
+
+  fetch("/business/save", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(formData)
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log("📥 Respuesta:", data);
+    
+    if (data.success) {
+      alert("✅ Datos guardados correctamente");
+      closeBusinessModal();
+    } else {
+      alert("❌ Error al guardar: " + (data.error || "Intente de nuevo"));
+    }
+  })
+  .catch(err => {
+    console.error("❌ Error:", err);
+    alert("❌ Error de conexión");
+  });
+});
+
+function loadStats() {
+  fetch('/stats', { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d || d.success === false) return;
+      // Actualiza contadores con datos de la BD
+      updateStats(d.total_lists || 0, d.total_products || 0);
+      // Si algún día querés mostrar "Última actualización", podés reutilizar este valor:
+      // const upd = d.last_update ? new Date(d.last_update).toLocaleString('es-AR') : '-';
+      // document.getElementById('lastSearch').textContent = upd;
+    })
+    .catch(err => console.error('Error cargando stats:', err));
+}
+
+
+
+
+
+</script>
+  <style>
+    /* ====== THEME / RESET ====== */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root {
+      --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --secondary-gradient: linear-gradient(#007bff 0%, #0056b3 100%);
+      --accent-gradient: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+      --success-gradient: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+      --danger-gradient: linear-gradient(135deg, #ff416c 0%, #ff4757 100%);
+      --dark-surface: rgba(255, 255, 255, 0.95);
+      --glass-bg: rgba(255, 255, 255, 0.25);
+      --glass-border: rgba(255, 255, 255, 0.18);
+      --text-primary: #2c3e50;
+      --text-secondary: #6c757d;
+      --shadow-light: 0 8px 32px rgba(31, 38, 135, 0.37);
+      --shadow-heavy: 0 20px 60px rgba(0, 0, 0, 0.15);
+      --border-radius: 20px;
+      --transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--primary-gradient);
+      min-height: 100vh;
+      padding: 1rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before {
+      content:'';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(circle at 20% 50%, rgba(120,119,198,0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255,119,198,0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(120,219,255,0.3) 0%, transparent 50%);
+      pointer-events:none; z-index:-1;
+    }
+
+    .container {
+      max-width: 1400px; margin: 0 auto;
+      background: var(--dark-surface);
+      backdrop-filter: blur(20px);
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow-heavy);
+      overflow: hidden;
+      border: 1px solid var(--glass-border);
+      animation: slideIn .8s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+    @keyframes slideIn { from {opacity:0; transform: translateY(30px);} to {opacity:1; transform: translateY(0);} }
+
+    .header {
+      background: var(--secondary-gradient); color: #fff;
+      padding: 2.5rem 2rem; text-align:center; position: relative; overflow: hidden;
+    }
+    .header::before {
+      content:'';
+      position:absolute; top:-50%; left:-50%; width:200%; height:200%;
+      background: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,.05) 2px, rgba(255,255,255,.05) 4px);
+      animation: shimmer 20s linear infinite;
+    }
+    @keyframes shimmer { 0% { transform: translateX(-100%) translateY(-100%) rotate(45deg);} 100% { transform: translateX(100%) translateY(100%) rotate(45deg);} }
+
+    .header h1 { font-size: clamp(2rem, 5vw, 3rem); margin-bottom:.5rem; font-weight:700; position:relative; z-index:1; letter-spacing:-.02em; }
+    .header p { opacity:.9; font-size: clamp(1rem,3vw,1.2rem); position:relative; z-index:1; }
+    .user-badge {
+      position:absolute; top:1.5rem; right:1.5rem;
+      background: var(--success-gradient); color:#fff;
+      padding:.75rem 1.5rem; border-radius:50px; font-size:.85rem; font-weight:600;
+      text-transform:uppercase; letter-spacing:.5px; box-shadow: var(--shadow-light); z-index:2;
+    }
+
+    .main-content { display:grid; grid-template-columns: 1fr 380px; gap:0; min-height:70vh; }
+    .left-panel { padding: 2.5rem; }
+    .sidebar {
+      background: linear-gradient(145deg, rgba(248,249,250,.95) 0%, rgba(233,236,239,.95) 100%);
+      border-left: 1px solid rgba(0,0,0,.1);
+      padding: 2.5rem 2rem; position: relative;
+    }
+    .sidebar::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-gradient); }
+    .loaded-lists {
+      margin-top:30px;
+            margin-bottom: 30px;
+        }
+    .section-title {
+      font-size:1.4rem; font-weight:700; color: var(--text-primary);
+      margin-bottom:1.5rem; display:flex; align-items:center; gap:.75rem; position:relative;
+    }
+    .section-title::after {
+      content:''; flex:1; height:2px; background: linear-gradient(to right, #28a745, transparent); margin-left:1rem;
+    }
+
+    .search-container { position:relative; margin-bottom:2rem; }
+    .search-input {
+      width:100%; padding: 1.25rem 4rem 1.25rem 1.5rem; font-size:1.1rem;
+      border:2px solid #e9ecef; border-radius:50px; outline:none; transition: var(--transition);
+      background:#fff; box-shadow: 0 4px 20px rgba(0,0,0,.08);
+    }
+    .search-input:focus { border-color:#007bff; box-shadow: 0 0 0 4px rgba(0,123,255,.15), 0 8px 30px rgba(0,0,0,.12); transform: translateY(-2px); }
+    .search-icon { position:absolute; right:1.5rem; top:50%; transform: translateY(-50%); color:#6c757d; font-size:1.2rem; pointer-events:none; }
+    .search-controls { display:grid; grid-template-columns: 2fr 1fr; gap:1rem; margin-top:1.5rem; }
+    .search-btn, .clear-btn {
+      padding:.9rem 1.5rem; border:none; border-radius:50px; cursor:pointer; font-weight:600; font-size:.95rem;
+      transition: var(--transition); position:relative; overflow:hidden;
+    }
+    .search-btn { background: var(--secondary-gradient); color:#fff; }
+    .clear-btn  { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color:#fff; }
+    .search-btn:hover, .clear-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,.2); }
+
+    .results-section { min-height: 400px; }
+    .results-info {
+      margin-bottom:1.5rem; padding:1.25rem; background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      border-radius:12px; color:#1565c0; font-weight:600; display:flex; justify-content:space-between; align-items:center;
+      box-shadow: 0 4px 15px rgba(21,101,192,.2);
+    }
+    .results-table {
+      width:100%; border-collapse:collapse; background:#fff; border-radius:15px; overflow:hidden; box-shadow: 0 5px 15px rgba(0,0,0,.08);
+    }
+    .results-table th {
+      background: linear-gradient(135deg, #495057 0%, #6c757d 100%); color:#fff; padding:15px 12px; text-align:left;
+      font-weight:600; font-size:.9rem; text-transform:uppercase; letter-spacing:.5px;
+    }
+    .results-table td { padding:12px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+    .results-table tr:hover { background:#f8f9fa; transform: translateX(2px); transition: all .2s ease; }
+    .results-table tr:last-child td { border-bottom:none; }
+    .product-name-cell { font-size:1rem; font-weight:600; color: var(--text-primary); line-height:1.4; }
+    .price-cell {
+      font-weight:700; font-size:1.2rem;
+      background: var(--success-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; white-space:nowrap;
+    }
+    .supplier-cell { font-weight:700; color:#007bff; font-size:.85rem; text-transform:uppercase; letter-spacing:.3px; }
+    .add-to-cart-btn {
+      background: var(--success-gradient); color:#fff; border:none; padding:.5rem 1rem; border-radius:25px; cursor:pointer; font-weight:600; font-size:.85rem;
+      transition: var(--transition); display:flex; align-items:center; gap:.5rem;
+    }
+    .add-to-cart-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(40,167,69,.4); }
+
+    .no-results {
+      text-align:center; padding:4rem 2rem; color: var(--text-secondary); font-size:1.1rem;
+      background: linear-gradient(135deg, rgba(255,255,255,.95), rgba(255,255,255,.95)); border-radius: var(--border-radius); margin:2rem 0;
+    }
+    .loading { text-align:center; padding:3rem; color:#007bff; }
+    .spinner { border:4px solid #f3f3f3; border-top:4px solid transparent; border-radius:50%; width:50px; height:50px; animation: spin 1s linear infinite; margin:0 auto 1.5rem; background: var(--secondary-gradient); }
+    @keyframes spin { 0% {transform:rotate(0deg);} 100% {transform:rotate(360deg);} }
+
+    /* Cart */
+    .cart-section { background:#fff; border-radius:12px; padding:1.5rem; margin-bottom:2rem; box-shadow: 0 4px 15px rgba(0,0,0,.08); border:1px solid #e9ecef; }
+    .cart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; padding-bottom:1rem; border-bottom:2px solid #f8f9fa; }
+    .cart-title { font-size:1.2rem; font-weight:700; color: var(--text-primary); display:flex; align-items:center; gap:.5rem; }
+    .cart-count { background: var(--danger-gradient); color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:700; }
+
+    .cart-item { display:flex; justify-content:space-between; align-items:center; padding:.75rem 0; border-bottom:1px solid #f0f0f0; }
+    .cart-item:last-child { border-bottom:none; }
+    .cart-item-info { flex:1; }
+    .cart-item-name { font-weight:600; color: var(--text-primary); font-size:.9rem; margin-bottom:.25rem; }
+    .cart-item-details { font-size:.8rem; color: var(--text-secondary); }
+    .cart-item-controls { display:flex; align-items:center; gap:.5rem; }
+    .quantity-control { display:flex; align-items:center; gap:.25rem; }
+    .quantity-btn {
+      background: var(--secondary-gradient); color:#fff; border:none; width:24px; height:24px; border-radius:50%;
+      cursor:pointer; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; transition: var(--transition);
+    }
+    .quantity-btn:hover { transform: scale(1.1); }
+    .quantity-input { width:40px; text-align:center; border:1px solid #e9ecef; border-radius:4px; padding:.25rem; font-size:.8rem; }
+    .remove-item-btn { background: var(--danger-gradient); color:#fff; border:none; padding:.25rem .5rem; border-radius:15px; cursor:pointer; font-size:.7rem; font-weight:600; transition: var(--transition); }
+    .remove-item-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(255,65,108,.4); }
+    .cart-total { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding:1rem; border-radius:8px; margin:1rem 0; text-align:center; }
+    .cart-total-amount { font-size:1.4rem; font-weight:700; color: var(--text-primary); }
+    .cart-actions { display:grid; grid-template-columns: 1fr 1fr; gap:.75rem; margin-top:1rem; }
+    .cart-btn {
+      padding:.75rem 1rem; border:none; border-radius:25px; cursor:pointer; font-weight:600; font-size:.9rem; transition: var(--transition);
+      display:flex; align-items:center; justify-content:center; gap:.5rem;
+    }
+    .generate-pdf-btn { background: var(--success-gradient); color:#fff; }
+    .clear-cart-btn   { background: var(--danger-gradient); color:#fff; }
+    .cart-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+
+    /* Modal */
+    .modal { display:none; position:fixed; z-index:1000; inset:0; width:100%; height:100%; background: rgba(0,0,0,.7); backdrop-filter: blur(5px); }
+    .modal-content {
+      background:#fff; margin:5% auto; padding:2rem; border-radius:20px; width:90%; max-width:500px; box-shadow: var(--shadow-heavy); animation: modalSlideIn .3s ease-out;
+    }
+    @keyframes modalSlideIn { from {opacity:0; transform: translateY(-30px) scale(.9);} to {opacity:1; transform: translateY(0) scale(1);} }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:2px solid #f8f9fa; }
+    .modal-title { font-size:1.4rem; font-weight:700; color: var(--text-primary); }
+    .close { color:#aaa; font-size:28px; font-weight:bold; cursor:pointer; transition: color .3s; }
+    .close:hover { color:#333; }
+    .form-group { margin-bottom:1.5rem; }
+    .form-label { display:block; margin-bottom:.5rem; font-weight:600; color: var(--text-primary); }
+    .form-input { width:100%; padding:.75rem 1rem; border:2px solid #e9ecef; border-radius:10px; font-size:1rem; transition: var(--transition); }
+    .form-input:focus { outline:none; border-color:#007bff; box-shadow: 0 0 0 3px rgba(0,123,255,.15); }
+    .form-input.required { border-left: 4px solid #dc3545; }
+    .form-actions { display:flex; gap:1rem; justify-content:flex-end; }
+    .btn-primary, .btn-secondary {
+      padding:.75rem 1.5rem; border:none; border-radius:25px; cursor:pointer; font-weight:600; font-size:.95rem; transition: var(--transition);
+    }
+    .btn-primary { background: var(--secondary-gradient); color:#fff; }
+    .btn-secondary { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color:#fff; }
+    .btn-primary:hover, .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+
+    /* PDF results */
+    .pdf-results { background:#fff; border-radius:12px; padding:1.5rem; margin-top:1rem; box-shadow: 0 4px 15px rgba(0,0,0,.08); border:1px solid #e9ecef; }
+    .pdf-item {
+      display:flex; justify-content:space-between; align-items:center; padding:1.5rem; margin-bottom:1rem; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius:12px; border:1px solid #dee2e6; transition: var(--transition);
+    }
+            .stats-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 5px 0;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+    .pdf-item:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,.1); }
+    .pdf-item:last-child { margin-bottom:0; }
+    .pdf-info { flex:1; }
+    .pdf-supplier { font-weight:700; color: var(--text-primary); font-size:1.1rem; margin-bottom:.5rem; }
+    .pdf-details { font-size:.9rem; color: var(--text-secondary); line-height:1.4; }
+    .pdf-actions { display:flex; gap:.75rem; flex-wrap:wrap; }
+    .download-btn, .whatsapp-btn {
+      padding:.75rem 1.25rem; border:none; border-radius:25px; cursor:pointer; font-weight:600; font-size:.85rem; transition: var(--transition);
+      text-decoration:none; display:flex; align-items:center; gap:.5rem; white-space:nowrap;
+    }
+    .download-btn { background: var(--secondary-gradient); color:#fff; }
+    .whatsapp-btn { background: linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#fff; }
+    .download-btn:hover, .whatsapp-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,.3); text-decoration:none; color:#fff; }
+
+    .logout-wrap { position:fixed; top:1rem; left:1rem; z-index:1000; }
+    .logout-btn {
+      display:inline-flex; align-items:center; gap:.75rem; padding:.75rem 1.25rem; border-radius:50px; cursor:pointer; border:none;
+      background: var(--danger-gradient); color:#fff; box-shadow: var(--shadow-light); transition: var(--transition); font-weight:600; font-size:.9rem; backdrop-filter: blur(10px);
+    }
+    .logout-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 35px rgba(255,65,108,.4); }
+
+    .status-message { padding:1rem; border-radius:8px; margin:1rem 0; font-weight:600; animation: slideDown .5s ease-out; }
+    @keyframes slideDown { from {opacity:0; transform: translateY(-20px);} to {opacity:1; transform: translateY(0);} }
+    .status-success { background: linear-gradient(135deg, #d4edda 0%, #a8e6cf 100%); color:#155724; border:1px solid #c3e6cb; }
+    .status-error   { background: linear-gradient(135deg, #f8d7da 0%, #ffb3ba 100%); color:#721c24; border:1px solid #f5c6cb; }
+    .status-info    { background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%); color:#0c5460; border:1px solid #bee5eb; }
+
+    /* Responsive */
+    @media (max-width:1200px){ .main-content { grid-template-columns: 1fr 320px; } }
+    @media (max-width:1024px){
+      .main-content { grid-template-columns:1fr; }
+      .sidebar { border-left:none; border-top:1px solid rgba(0,0,0,.1); }
+      .sidebar::before { width:100%; height:4px; top:0; left:0; }
+    }
+    @media (max-width:768px){
+      body { padding:.75rem; } .container { border-radius:16px; }
+      .header { padding:2rem 1.5rem; }
+      .user-badge { position:static; display:inline-block; margin-bottom:1rem; }
+      .left-panel, .sidebar { padding:2rem 1.5rem; }
+      .search-controls, .cart-actions { grid-template-columns:1fr; gap:.75rem; }
+      .pdf-actions { flex-direction:column; }
+      .modal-content { margin:10% auto; width:95%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="logout-wrap">
+    <form action="{{ url_for('logout') }}" method="post">
+      <button type="submit" class="logout-btn" title="Cerrar sesión">
+        <span>⟵</span>
+        <span>Cerrar sesión</span>
+      </button>
+    </form>
+  </div>
+
+  <!-- Modal para datos del negocio -->
+  <div id="businessModal" class="modal" aria-hidden="true" role="dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">📋 Datos del Comercio</h3>
+        <span class="close" onclick="closeBusinessModal()" aria-label="Cerrar">&times;</span>
+      </div>
+      <form id="businessForm">
+        <div class="form-group">
+          <label class="form-label" for="businessName">Nombre del Comercio *</label>
+          <input type="text" id="businessName" name="businessName" class="form-input required" placeholder="Ej: Almacén San Martín" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="contactPerson">Persona de Contacto</label>
+          <input type="text" id="contactPerson" name="contactPerson" class="form-input" placeholder="Ej: Juan Pérez">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="businessAddress">Dirección de Entrega *</label>
+          <input type="text" id="businessAddress" name="businessAddress" class="form-input required" placeholder="Ej: Av. San Martín 1234, CABA" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="businessPhone">Teléfono *</label>
+          <input type="tel" id="businessPhone" name="businessPhone" class="form-input required" placeholder="Ej: +54 11 1234-5678" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="businessEmail">Email</label>
+          <input type="email" id="businessEmail" name="businessEmail" class="form-input" placeholder="Ej: pedidos@almacensanmartin.com">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeBusinessModal()">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar y Continuar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="header">
+      <div class="user-badge">👤 {{ user }}</div>
+      
+      <h1>🛍️ ComparApp+</h1>
+      <p>Compará productos y armá tu pedido sin gastar de más.</p>
+    </div>
+
+    <div class="main-content">
+      <div class="left-panel">
+        <!-- Search Section -->
+        <div class="search-section">
+          <h3 class="section-title">🔍 Buscar Productos</h3>
+          <div class="search-container">
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos..." autocomplete="off">
+            <div class="search-icon">🔍</div>
+          </div>
+          <div class="search-controls">
+            <button class="search-btn" onclick="searchProducts()">Buscar Productos</button>
+            <button class="clear-btn" onclick="clearSearch()">Limpiar</button>
+          </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section">
+          <div id="searchResults">
+            <div class="no-results">
+              <p>🔍 Busca productos para agregar a tu carrito</p>
+              <p style="margin-top:10px; font-size:.9rem; color:#28a745;">✨ Encuentra los mejores precios</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessages" aria-live="polite"></div>
+
+        <!-- PDF Results -->
+        <div id="pdfResults" style="display:none;"></div>
+      </div>
+
+        <div class="sidebar">
+          <!-- Cart Section -->
+          <div class="cart-section">
+            <div class="cart-header">
+              <div class="cart-title">
+                🛒 Carrito
+                <span class="cart-count" id="cartCount">0</span>
+              </div>
+            </div>
+
+            <!-- Items -->
+            <div id="cartItems">
+              <p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>
+            </div>
+
+            <!-- Total y acciones (solo se muestra si hay productos) -->
+            <div id="cartTotal" style="display:none;">
+              <div class="cart-total">
+                <div class="cart-total-amount" id="totalAmount">$0.00</div>
+              </div>
+              <div class="cart-actions">
+                <button class="cart-btn generate-pdf-btn" onclick="checkBusinessDataAndGeneratePDFs()">📄 Generar PDFs</button>
+                <button class="cart-btn clear-cart-btn" onclick="clearCart()">🗑️ Vaciar Carrito</button>
+              </div>
+            </div>
+
+            <br>
+            <br>
+
+            <!-- Estadísticas -->
+            <div class="stats-section">
+              <h4 style="margin-bottom: 15px; color: #2c3e50;">📊 Estadísticas</h4>
+              <div class="stat-item">
+                <span class="stat-label">Total listas:</span>
+                <span class="stat-value" id="totalLists">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Productos totales:</span>
+                <span class="stat-value" id="totalProducts">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Última búsqueda:</span>
+                <span class="stat-value" id="lastSearch">-</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div> <!-- /sidebar -->
+    </div> <!-- /main-content -->
+  </div> <!-- /container -->
+
+
+
+
+
+</body>
+</html>
