@@ -12,7 +12,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     loadCart();
     loadBusinessData();
-
+    loadStats();
     // submit del modal de negocio
     const businessForm = document.getElementById('businessForm');
     businessForm.addEventListener('submit', (e) => {
@@ -96,6 +96,21 @@
         Buscando "${escapeHtml(query)}"...
       </div>
     `;
+
+    fetch(`/search?q=${encodeURIComponent(query)}`)
+  .then(resp => {
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    return resp.json();
+  })
+  .then(data => {
+    displayResults(data);
+    // 🔹 NUEVO: mostrar "Última búsqueda" (texto del usuario)
+    document.getElementById('lastSearch').textContent = query;
+    // Opcional: refrescar contadores si cambian por otro proceso
+    // loadStats();
+  })
+  .catch(/* ... */);
+
 
     fetch(`/search?q=${encodeURIComponent(query)}`)
       .then(resp => {
@@ -655,6 +670,23 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
   });
 });
 
+function loadStats() {
+  fetch('/stats', { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d || d.success === false) return;
+      // Actualiza contadores con datos de la BD
+      updateStats(d.total_lists || 0, d.total_products || 0);
+      // Si algún día querés mostrar "Última actualización", podés reutilizar este valor:
+      // const upd = d.last_update ? new Date(d.last_update).toLocaleString('es-AR') : '-';
+      // document.getElementById('lastSearch').textContent = upd;
+    })
+    .catch(err => console.error('Error cargando stats:', err));
+}
+
+
+
+
 
 </script>
   <style>
@@ -1043,13 +1075,8 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
               </div>
             </div>
 
-            <!-- Listas cargadas -->
-            <div class="loaded-lists">
-              <h4 class="section-title">📋 Listas Cargadas</h4>
-              <div id="loadedLists">
-                <p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>
-              </div>
-            </div>
+            <br>
+            <br>
 
             <!-- Estadísticas -->
             <div class="stats-section">

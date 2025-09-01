@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 import re
-import pymysql
+import mysql.connector
 from functools import wraps
 from flask import redirect, url_for, session, request 
 
@@ -527,6 +527,43 @@ def get_loaded_lists():
         conn.close()
 
 
+@app.route('/stats')
+@login_required
+def stats():
+    """Estadísticas directas desde la BD."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        # Total de listas = cantidad de proveedores únicos
+        cur.execute("SELECT COUNT(DISTINCT proveedor) FROM productos")
+        total_lists = cur.fetchone()[0] or 0
+
+        # Total de productos
+        cur.execute("SELECT COUNT(*) FROM productos")
+        total_products = cur.fetchone()[0] or 0
+
+        # Última actualización global (por si querés mostrarla más adelante)
+        cur.execute("SELECT MAX(actualizado_a) FROM productos")
+        last_update_row = cur.fetchone()
+        last_update = (
+            last_update_row[0].isoformat() if last_update_row and last_update_row[0] else None
+        )
+
+        return jsonify({
+            'success': True,
+            'total_lists': int(total_lists),
+            'total_products': int(total_products),
+            'last_update': last_update
+        })
+    finally:
+        conn.close()
+
+
+
+
+
+
 @app.route('/cart/add', methods=['POST'])
 @login_required
 def add_to_cart():
@@ -630,62 +667,48 @@ def clear_cart():
 @app.route("/business/save", methods=["POST"])
 def save_business():
     print("🚀 Ruta /business/save llamada")
-    
+
     data = request.json
-    print("📦 Datos recibidos:", data)
-    
-    # CORREGIDO: Usar 'user' en lugar de 'username'
-    current_user = session.get('user')  # ← Cambiado aquí
-    current_role = session.get('role')
-    
-    print(f"👤 Usuario desde sesión: '{current_user}'")
-    print(f"🔑 Rol desde sesión: '{current_role}'")
-    print(f"🔍 Sesión completa: {dict(session)}")
-    
+    current_user = session.get("user")
+    current_role = session.get("role")
+
     if not current_user:
-        print("❌ ERROR: No hay usuario en la sesión")
-        return jsonify({
-            "success": False, 
-            "error": "Usuario no autenticado. Por favor, inicia sesión."
-        })
-    
+        return jsonify({"success": False, "error": "Usuario no autenticado. Por favor, inicia sesión."})
+
     if not data:
-        print("❌ No hay datos JSON")
         return jsonify({"success": False, "error": "No se recibieron datos"})
-    
+
+    conn = None
+    cursor = None
     try:
         print("🔌 Intentando conectar a BD...")
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = get_connection()                      # 👉 conexión NUEVA por request
+        conn.autocommit = False                      # manejamos nosotros el commit
+
+        # 👉 usar cursor buffered para evitar resultados pendientes
+        cursor = conn.cursor(buffered=True, dictionary=True)
         print("✅ Conexión exitosa")
 
-        # Verificar si el usuario existe en la tabla
-        check_sql = "SELECT username FROM usuarios WHERE username = %s"
-        cursor.execute(check_sql, (current_user,))
-        existing_user = cursor.fetchone()
-        
-        print(f"🔍 Usuario en BD: {existing_user}")
-        
-        if not existing_user:
-            print("❌ ERROR: Usuario no existe en la tabla usuarios")
-            cursor.close()
-            conn.close()
+        # 1) Verificar usuario (y CONSUMIR resultados)
+        cursor.execute("SELECT username FROM usuarios WHERE username = %s", (current_user,))
+        _ = cursor.fetchone()                        # fetch para vaciar el resultset
+
+        if not _:
             return jsonify({
-                "success": False, 
+                "success": False,
                 "error": f"El usuario '{current_user}' no existe en la base de datos. Contacta al administrador."
             })
 
-        # UPDATE para actualizar la fila del usuario
+        # 2) Actualizar datos
         sql = """
-        UPDATE usuarios 
-        SET business_name = %s, 
-            comercio = %s, 
-            address = %s, 
-            phone = %s, 
-            email = %s
-        WHERE username = %s
+            UPDATE usuarios 
+               SET business_name = %s,
+                   comercio      = %s,
+                   address       = %s,
+                   phone         = %s,
+                   email         = %s
+             WHERE username      = %s
         """
-        
         values = (
             data.get("businessName"),
             data.get("contactPerson"),
@@ -694,63 +717,39 @@ def save_business():
             data.get("businessEmail"),
             current_user
         )
-        
-        print("📝 SQL:", sql)
-        print("📝 Values:", values)
-        
         cursor.execute(sql, values)
-        rows_affected = cursor.rowcount
-        print(f"✅ Query ejecutada, filas afectadas: {rows_affected}")
-        
-        if rows_affected == 0:
-            print("⚠️ ADVERTENCIA: No se afectaron filas")
-            cursor.close()
-            conn.close()
-            return jsonify({
-                "success": False, 
-                "error": f"No se pudo actualizar el usuario '{current_user}'"
-            })
-        
-        conn.commit()
-        print("✅ Commit realizado")
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return jsonify({"success": False, "error": f"No se pudo actualizar el usuario '{current_user}'"})
 
-        # Verificar que se guardó correctamente
-        verify_sql = "SELECT business_name, address, phone FROM usuarios WHERE username = %s"
-        cursor.execute(verify_sql, (current_user,))
-        updated_data = cursor.fetchone()
-        print(f"🔍 Datos guardados: {updated_data}")
+        conn.commit()                                # ✅ commit de escritura
 
-        cursor.close()
-        conn.close()
-        print("✅ Conexión cerrada")
+        # 3) Verificar (leer y consumir resultados)
+        cursor.execute(
+            "SELECT business_name, comercio, address, phone, email FROM usuarios WHERE username = %s",
+            (current_user,)
+        )
+        updated = cursor.fetchone()                  # <— consumir resultado
 
         return jsonify({
-            "success": True, 
+            "success": True,
             "message": f"Datos del negocio actualizados correctamente para {current_user}",
             "user": current_user,
-            "data": {
-                "business_name": data.get("businessName"),
-                "contact_person": data.get("contactPerson"),
-                "address": data.get("businessAddress"),
-                "phone": data.get("businessPhone"),
-                "email": data.get("businessEmail")
-            }
+            "data": updated
         })
-        
+
     except Exception as e:
-        print(f"❌ ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        try:
-            if 'cursor' in locals():
-                cursor.close()
-            if 'conn' in locals():
-                conn.close()
-        except:
-            pass
-            
+        if conn:
+            try: conn.rollback()
+            except: pass
+        print("❌ ERROR:", e)
         return jsonify({"success": False, "error": str(e)})
+    finally:
+        try:
+            if cursor: cursor.close()
+        finally:
+            if conn: conn.close()                   
+
 
 
 @app.route('/business/info', methods=['GET', 'POST'])
@@ -780,14 +779,65 @@ def clear_lists():
     price_lists = {}
     return jsonify({'success': True, 'message': 'Todas las listas han sido eliminadas'})
 
-@app.route('/remove_list/<supplier>')
+# ⬇️ reemplazar la ruta /remove_list completa por esta
+@app.route('/remove_list/<path:supplier>', methods=['GET', 'DELETE'])
+@login_required
 def remove_list(supplier):
-    """Remover una lista específica"""
-    if supplier in price_lists:
-        del price_lists[supplier]
-        return jsonify({'success': True, 'message': f'Lista de {supplier} eliminada'})
+    """Eliminar una lista/proveedor desde la BD (productos y opcionalmente proveedores_config)."""
+    # Decodificar por si viene con %20, etc.
+    supplier_raw = supplier
+    supplier = urllib.parse.unquote(supplier_raw)
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        # 1) borrar productos (intento exacto)
+        cur.execute("DELETE FROM productos WHERE proveedor = %s", (supplier,))
+        deleted_prod = cur.rowcount
+
+        # 1.b) si no borró nada, intentá con normalización (espacios/case)
+        if deleted_prod == 0:
+            cur.execute("""
+                DELETE FROM productos 
+                WHERE LOWER(TRIM(proveedor)) = LOWER(TRIM(%s))
+            """, (supplier,))
+            deleted_prod = cur.rowcount
+
+        # 2) borrar ficha del proveedor (opcional; descomentalo si querés)  
+        cur.execute("DELETE FROM proveedores_config WHERE proveedor = %s", (supplier,))
+        deleted_cfg = cur.rowcount
+        if deleted_cfg == 0:
+             cur.execute("""
+                 DELETE FROM proveedores_config 
+                 WHERE LOWER(TRIM(proveedor)) = LOWER(TRIM(%s))
+             """, (supplier,))
+             deleted_cfg = cur.rowcount
+        deleted_cfg = 0  # si lo dejás comentado arriba
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'message': f'Error eliminando la lista: {e}'}), 500
+    finally:
+        conn.close()
+
+    # Limpiar memoria si existiera
+    try:
+        if supplier in price_lists:
+            del price_lists[supplier]
+    except Exception:
+        pass
+
+    if deleted_prod > 0 or deleted_cfg > 0:
+        return jsonify({
+            'success': True,
+            'message': f'Eliminado {supplier}: {deleted_prod} productos'
+                       + (f' y {deleted_cfg} ficha(s) proveedor' if deleted_cfg else '')
+        })
     else:
         return jsonify({'success': False, 'message': 'Lista no encontrada'})
+
 
 @app.route('/ai/suggest')
 def ai_suggest():
@@ -857,14 +907,17 @@ def cleanup_temp_files():
             'success': False,
             'message': f'Error limpiando archivos: {str(e)}'
         })
+    
 def get_connection():
-    return pymysql.connect(
-        host="gateway01.us-east-1.prod.aws.tidbcloud.com",      # Cambiá si tu servidor MySQL no es local
-        user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
-        password="TI03zW0skLEYT7Go",# Contraseña de MySQL
-        database="test",    # Base de datos creada
-        ssl={"ca":"isrgrootx1.pem"}
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",
+        database="login_db",
+        autocommit=False,
+        consume_results=True   # 👈 evita "Unread result found"
     )
+
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
     """Crea o actualiza un proveedor con su dirección, teléfono y email."""
@@ -904,6 +957,22 @@ def get_proveedor_info(nombre: str) -> dict:
         }
     finally:
         conn.close()
+
+def get_supplier_phone(nombre: str) -> str:
+    """
+    Devuelve el teléfono del proveedor priorizando la BD (proveedores_config).
+    Si no existe o está vacío, usa el respaldo SUPPLIER_PHONES.
+    """
+    try:
+        prov = get_proveedor_info(nombre) or {}
+        telefono_db = (prov.get('telefono') or '').strip()
+        if telefono_db:
+            return telefono_db
+    except Exception:
+        pass
+    return (SUPPLIER_PHONES.get(nombre, '') or '').strip()
+
+        
 
 import re
 from datetime import datetime
@@ -1377,9 +1446,12 @@ def generate_pdfs():
             
             # Crear mensaje de WhatsApp
             whatsapp_message = create_whatsapp_message(supplier, items, business_data_from_db, total_supplier)
-            phone = SUPPLIER_PHONES.get(supplier, '')
+
+            # Teléfono del proveedor: BD -> fallback a SUPPLIER_PHONES
+            phone = get_supplier_phone(supplier)
             phone_clean = _normalize_phone(phone)
-            
+
+            # Armar URL wa.me con o sin número
             if phone_clean:
                 wa_url = f"https://wa.me/{phone_clean}?text={urllib.parse.quote(whatsapp_message)}"
             else:
@@ -1407,6 +1479,7 @@ def generate_pdfs():
         'whatsapp_links': whatsapp_links,
         'total_suppliers': len(suppliers)
     })
+
 
 def get_user_business_data(username):
     """Obtiene los datos completos del negocio del usuario desde la BD"""

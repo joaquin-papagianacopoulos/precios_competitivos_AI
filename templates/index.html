@@ -616,10 +616,7 @@
                         <span class="stat-label">Productos totales:</span>
                         <span class="stat-value" id="totalProducts">0</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Última búsqueda:</span>
-                        <span class="stat-value" id="lastSearch">-</span>
-                    </div>
+                    
                 </div>
             </div>
         </div>
@@ -628,7 +625,7 @@
     <script>
         // Cargar información de listas al inicio
         loadListsInfo();
-
+        loadStats();  
         // Manejo del formulario de upload
                 document.getElementById('uploadForm').addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -663,7 +660,8 @@
                     if (data.debug_info) {
                         showDebug(data.debug_info);
                     }
-                    loadListsInfo(); // Recargar info de listas
+                    loadListsInfo();
+                    loadStats();   // Recargar info de listas
                     
                     // Limpiar formulario
                     document.getElementById('uploadForm').reset();
@@ -783,38 +781,56 @@
             resultsDiv.innerHTML = resultsInfo + tableHeader + tableRows + tableFooter;
         }
 
-        function loadListsInfo() {
-            fetch('/lists')
-                .then(response => response.json())
-                .then(data => {
-                    const listsDiv = document.getElementById('loadedLists');
-                    if (data.total === 0) {
-                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
-                        updateStats(0, 0);
-                        return;
-                    }
+function loadListsInfo() {
+  fetch('/lists')
+    .then(response => response.json())
+    .then(data => {
+      const listsDiv = document.getElementById('loadedLists');
+      if (data.total === 0) {
+        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
+        updateStats(0, 0);
+        return;
+      }
 
-                    let totalProducts = 0;
-                    const html = data.lists.map(list => {
-                        totalProducts += list.total_products;
-                        return `
-                         <div class="list-item">
-                            <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
-                            <div class="list-name">${list.supplier}</div>
-                            <div class="list-info">
-                            ${list.total_products} productos<br>
-                            <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
-                            </div>
-                        </div>
-                        `;
-                        
-                    }).join('');
+      let totalProducts = 0;
+      const html = data.lists.map(list => {
+        totalProducts += list.total_products;
+        const supplierKey = encodeURIComponent(list.supplier ?? '');
+        return `
+          <div class="list-item">
+            <button type="button" class="remove-btn" data-supplier="${supplierKey}" title="Eliminar lista">×</button>
+            <div class="list-name">${list.supplier}</div>
+            <div class="list-info">
+              ${list.total_products} productos<br>
+              <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
+            </div>
+          </div>
+        `;
+      }).join('');
 
-                    listsDiv.innerHTML = html;
-                    updateStats(data.total, totalProducts);
-                })
-                .catch(error => console.error('Error cargando listas:', error));
-        }
+      listsDiv.innerHTML = html;
+
+      // Registrar el listener UNA sola vez por contenedor
+      if (!listsDiv.__removeBound) {
+        listsDiv.addEventListener('click', function (e) {
+          const btn = e.target.closest('.remove-btn');
+          if (!btn) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const supplier = decodeURIComponent(btn.dataset.supplier || '');
+          if (typeof removeList === 'function') {
+            removeList(supplier);
+          }
+        });
+        listsDiv.__removeBound = true;
+      }
+
+      updateStats(data.total, totalProducts);
+    })
+    .catch(error => console.error('Error cargando listas:', error));
+}
+
+
 
         function updateStats(totalLists, totalProducts) {
             document.getElementById('totalLists').textContent = totalLists;
@@ -828,6 +844,7 @@
                     .then(data => {
                         showStatus('success', '🗑️ ' + data.message);
                         loadListsInfo();
+                        loadStats(); 
                         document.getElementById('searchResults').innerHTML = `
                             <div class="no-results">
                                 <p>🗑️ Todas las listas han sido eliminadas</p>
@@ -842,21 +859,21 @@
 
         function removeList(supplier) {
             if (confirm(`¿Eliminar lista de ${supplier}?`)) {
-                fetch(`/remove_list/${encodeURIComponent(supplier)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus(data.success ? 'success' : 'error', 
-                                 data.success ? '✅ ' + data.message : '❌ ' + data.message);
-                        loadListsInfo();
+                    fetch(`/remove_list/${encodeURIComponent(supplier)}`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',               // asegura que viajen las cookies de sesión
+                    headers: { 'Accept': 'application/json' } // por claridad
+                    })
+
                         
                         // Si había una búsqueda activa, repetirla
                         const currentSearch = document.getElementById('searchInput').value.trim();
                         if (currentSearch) {
                             setTimeout(() => searchProducts(), 500);
                         }
-                    });
+                    };
             }
-        }
+
 
         function showStatus(type, message) {
             const statusDiv = document.getElementById('uploadStatus');
@@ -877,7 +894,22 @@
             debugHtml += '</div>';
             statusDiv.innerHTML += debugHtml;
         }
+
+    
+  function loadStats() {
+    fetch('/stats', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) return;
+        updateStats(d.total_lists, d.total_products);
+        // Si querés mostrar la última actualización:
+        // document.getElementById('lastSearch').textContent = d.last_update ? new Date(d.last_update).toLocaleString('es-AR') : '-';
+      })
+      .catch(err => console.error('Error cargando stats:', err));
+  }
+
     </script>
+    
 </body>
 </html>
  <!-- Botón Logout fijo arriba-izquierda -->
