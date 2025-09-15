@@ -50,6 +50,6 @@ def pdf_to_xlsx(pdf_path: str, xlsx_path: str):
 
 
 if __name__ == "__main__":
-    pdf_file = "bomba.pdf"   # Cambiar por tu PDF
+    pdf_file = "candy.pdf"   # Cambiar por tu PDF
     xlsx_file = "salida.xlsx"
     pdf_to_xlsx(pdf_file, xlsx_file)

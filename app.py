@@ -6,10 +6,9 @@ import json
 from datetime import datetime
 import re
 import mysql.connector
+#import pymysql.cursors
 from functools import wraps
 from flask import redirect, url_for, session, request 
-
-
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -17,7 +16,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 import urllib.parse
 from flask import send_file
-
+import regex as re
 
 
 def login_required(f):
@@ -66,19 +65,18 @@ price_lists = {}
 
 
 # === ESTADO CARRITO / NEGOCIO ===
-user_carts = {}     # carrito por usuario logueado
 business_data = {}  # datos del comercio por usuario
 
 
 # Ubicaciones por defecto de mayoristas
 DEFAULT_LOCATIONS = {
     'Mayorista Central': 'Av. Corrientes 1234, Buenos Aires, Argentina',
-    'Distribuidora Norte': 'San Martín 567, Córdoba, Argentina',
+    'Distribuidora Norte': 'San Martin 567, Cordoba, Argentina',
     'Comercial Sur': 'Pellegrini 890, Rosario, Argentina',
     'Proveedor Express': 'Florida 456, Buenos Aires, Argentina'
 }
 
-# === TELÉFONOS PARA WHATSAPP (dummy/ejemplo) ===
+# === TELeFONOS PARA WHATSAPP (dummy/ejemplo) ===
 SUPPLIER_PHONES = {
     'Gallesur': '+541156649404',
     'Distribuidora Norte': '+5491123456790',
@@ -89,294 +87,700 @@ SUPPLIER_PHONES = {
 
 class PriceListProcessor:
     def __init__(self):
-        self.possible_product_columns = ['producto', 'descripcion', 'item', 'nombre', 'description', 'product', 'nombre del articulo', 'nombre del producto', 'articulo']
-        self.possible_price_columns = ['precio', 'price', 'costo', 'valor', 'cost', 'amount', 'Importe c/IVA', 'importe', 'efectivo', 'unitario', 'pcio', 'prcio', 'prcio', 'precio unitario', 'precio unit', 'p.unit', 'pu', 'precio u', 'lista', 'precio lista', 'tarifa', 'neto']
+        self.possible_product_columns = [
+            'producto',           
+            'nombre del producto',
+            'descripcion', 
+            'item', 
+            'nombre', 
+            'description', 
+            'product', 
+            'nombre del articulo', 
+            'articulo',
+            'descripción',
+            'detalle'
+        ]
+        
+        self.possible_price_columns = [
+            'precio',            
+            'price',
+            'precio unitario', 
+            'costo', 
+            'valor', 
+            'cost', 
+            'amount', 
+            'importe c/iva', 
+            'importe', 
+            'efectivo', 
+            'unitario', 
+            'pcio', 
+            'prcio', 
+            'precio unit', 
+            'p.unit', 
+            'pu', 
+            'precio u', 
+            'lista', 
+            'precio lista', 
+            'tarifa', 
+            'neto'
+        ]
+        
+        self.columns_to_ignore = [
+            'código del producto', 
+            'codigo del producto', 
+            'código', 
+            'codigo', 
+            'sku', 
+            'id', 
+            'ref', 
+            'referencia', 
+            'code', 
+            'item code', 
+            'product code', 
+            'codigo producto', 
+            'código producto',
+            'código artículo',    
+            'codigo articulo',
+            'rubro',              
+            'categoria',
+            'tipo'
+        ]
+        
+        self.debug_log = []
+        self.debug_log = []  # Para almacenar logs detallados
+    
+    def log_debug(self, message, level="INFO"):
+        """Agregar mensaje al log de debug con timestamp"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        log_entry = f"[{timestamp}] {level}: {message}"
+        print(log_entry)
+        self.debug_log.append(log_entry)
+    
+    def get_debug_summary(self):
+        """Retorna resumen del debugging"""
+        return {
+            'total_log_entries': len(self.debug_log),
+            'recent_logs': self.debug_log[-20:],  # Últimos 20 logs
+            'full_log': self.debug_log
+        }
+    
+    def should_ignore_column(self, column_name):
+        """Verifica si una columna debe ser ignorada"""
+        if pd.isna(column_name):
+            return False
+        
+        column_lower = str(column_name).lower().strip()
+        
+        for ignore_pattern in self.columns_to_ignore:
+            if ignore_pattern in column_lower:
+                self.log_debug(f"🚫 COLUMNA IGNORADA: '{column_name}' coincide con patrón '{ignore_pattern}'")
+                return True
+        
+        return False
+    
+    def analyze_excel_structure(self, file_path):
+        """Analiza la estructura del Excel antes de procesarlo"""
+        self.log_debug(f"🔍 ANALIZANDO ESTRUCTURA: {file_path}")
+        
+        try:
+            excel_file = pd.ExcelFile(file_path)
+            structure_info = {
+                'sheets': [],
+                'total_sheets': len(excel_file.sheet_names),
+                'file_size_mb': os.path.getsize(file_path) / (1024*1024)
+            }
+            
+            for sheet_name in excel_file.sheet_names:
+                try:
+                    # Leer primeras 10 filas para análisis rápido
+                    df_sample = pd.read_excel(excel_file, sheet_name=sheet_name, nrows=10, header=None)
+                    
+                    sheet_info = {
+                        'name': sheet_name,
+                        'sample_rows': df_sample.shape[0],
+                        'sample_cols': df_sample.shape[1],
+                        'first_5_rows': [],
+                        'potential_headers': [],
+                        'ignored_columns': []
+                    }
+                    
+                    # Capturar primeras 5 filas como strings
+                    for i in range(min(5, len(df_sample))):
+                        row_data = [str(val) if pd.notna(val) else '' for val in df_sample.iloc[i].values]
+                        sheet_info['first_5_rows'].append(row_data)
+                    
+                    # Buscar potenciales headers en las primeras filas
+                    for row_idx in range(min(5, len(df_sample))):
+                        row_values = [str(val).lower().strip() if pd.notna(val) else '' for val in df_sample.iloc[row_idx].values]
+                        potential_headers = []
+                        ignored_in_row = []
+                        
+                        for col_idx, cell_value in enumerate(row_values):
+                            if cell_value:
+                                # Verificar si debe ser ignorada
+                                if self.should_ignore_column(cell_value):
+                                    ignored_in_row.append(f"Col{col_idx}:IGNORADA({cell_value})")
+                                    continue
+                                
+                                # Verificar si parece columna de producto
+                                for prod_col in self.possible_product_columns:
+                                    if prod_col in cell_value:
+                                        potential_headers.append(f"Col{col_idx}:PRODUCTO({prod_col})")
+                                        break
+                                
+                                # Verificar si parece columna de precio
+                                for price_col in self.possible_price_columns:
+                                    if price_col in cell_value:
+                                        potential_headers.append(f"Col{col_idx}:PRECIO({price_col})")
+                                        break
+                        
+                        if potential_headers or ignored_in_row:
+                            sheet_info['potential_headers'].append({
+                                'row': row_idx,
+                                'headers': potential_headers,
+                                'ignored': ignored_in_row
+                            })
+                    
+                    structure_info['sheets'].append(sheet_info)
+                    self.log_debug(f"📋 Hoja '{sheet_name}': {df_sample.shape[0]}x{df_sample.shape[1]} (muestra)")
+                    
+                except Exception as e:
+                    self.log_debug(f"❌ Error analizando hoja '{sheet_name}': {e}", "ERROR")
+                    structure_info['sheets'].append({
+                        'name': sheet_name,
+                        'error': str(e)
+                    })
+            
+            excel_file.close()
+            return structure_info
+            
+        except Exception as e:
+            self.log_debug(f"💥 ERROR CRÍTICO analizando estructura: {e}", "ERROR")
+            return {'error': str(e)}
     
     def find_column_index(self, df, possible_names):
-        """Encuentra el índice de la columna basándose en nombres posibles"""
+        """Encuentra el índice de la columna con debugging detallado y filtrado de columnas ignoradas"""
         columns_lower = [str(col).lower().strip() for col in df.columns]
         
+        self.log_debug(f"🔍 BUSCANDO COLUMNAS en headers: {columns_lower}")
+        self.log_debug(f"🎯 Buscando coincidencias para: {possible_names}")
+        
+        # Primero verificar columnas a ignorar
+        ignored_columns = []
+        for i, col in enumerate(df.columns):
+            if self.should_ignore_column(col):
+                ignored_columns.append((i, col))
+        
+        if ignored_columns:
+            self.log_debug(f"🚫 COLUMNAS IGNORADAS: {ignored_columns}")
+        
+        # Coincidencia exacta primero (excluyendo ignoradas)
+        for name in possible_names:
+            if name in columns_lower:
+                idx = columns_lower.index(name)
+                # Verificar si esta columna debe ser ignorada
+                if not self.should_ignore_column(df.columns[idx]):
+                    self.log_debug(f"✅ COINCIDENCIA EXACTA: '{name}' en columna {idx} ('{df.columns[idx]}')")
+                    return idx
+                else:
+                    self.log_debug(f"🚫 COINCIDENCIA EXACTA IGNORADA: '{name}' en columna {idx} ('{df.columns[idx]}')")
+        
+        # Luego contención (excluyendo ignoradas)
         for name in possible_names:
             for i, col in enumerate(columns_lower):
-                if name in col:
+                if name in col and not self.should_ignore_column(df.columns[i]):
+                    self.log_debug(f"✅ COINCIDENCIA PARCIAL: '{name}' en '{col}' (columna {i})")
                     return i
+                elif name in col and self.should_ignore_column(df.columns[i]):
+                    self.log_debug(f"🚫 COINCIDENCIA PARCIAL IGNORADA: '{name}' en '{col}' (columna {i})")
+        
+        self.log_debug(f"❌ NO SE ENCONTRÓ columna para: {possible_names}", "WARNING")
         return None
     
     def find_column_in_first_rows(self, df, possible_names, max_rows=8):
-        """
-        Busca columnas de producto/precio en las primeras filas del DataFrame
-        Útil cuando los headers reales están en filas posteriores
-        """
-        print(f"🔍 Buscando columnas en las primeras {max_rows} filas...")
+        """Busca columnas en las primeras filas con debugging detallado y filtrado de ignoradas"""
+        self.log_debug(f"🔍 BÚSQUEDA EN PRIMERAS {max_rows} FILAS para: {possible_names}")
         
-        # Limitar a las primeras max_rows filas disponibles
         search_rows = min(max_rows, len(df))
         
         for row_idx in range(search_rows):
-            print(f"📋 Analizando fila {row_idx}: {list(df.iloc[row_idx].values)}")
-            
-            # Convertir los valores de la fila a strings y limpiarlos
             row_values = [str(val).lower().strip() if pd.notna(val) else '' for val in df.iloc[row_idx].values]
             
-            # Buscar coincidencias con nombres posibles
+            self.log_debug(f"📋 Fila {row_idx}: {row_values[:5]}...")  # Solo primeros 5 valores
+            
             found_columns = {}
+            ignored_in_row = []
+            
             for col_idx, cell_value in enumerate(row_values):
-                if cell_value:  # Solo si la celda no está vacía
+                if cell_value:
+                    # Verificar si debe ser ignorada
+                    if self.should_ignore_column(cell_value):
+                        ignored_in_row.append((col_idx, cell_value))
+                        continue
+                    
+                    # Buscar coincidencias
                     for name in possible_names:
                         if name in cell_value:
                             found_columns[col_idx] = (cell_value, name)
-                            print(f"✅ Encontrado '{name}' en columna {col_idx}, fila {row_idx}: '{cell_value}'")
+                            self.log_debug(f"🎯 ENCONTRADO '{name}' en fila {row_idx}, columna {col_idx}: '{cell_value}'")
+            
+            if ignored_in_row:
+                self.log_debug(f"🚫 IGNORADAS en fila {row_idx}: {ignored_in_row}")
             
             if found_columns:
                 return row_idx, found_columns
         
+        self.log_debug(f"❌ NO encontrado en primeras {search_rows} filas", "WARNING")
         return None, {}
     
     def clean_price(self, price_str):
-        """Limpia y convierte string de precio a float - SOLO acepta valores que realmente parezcan precios"""
+        """Limpia precios con debugging detallado"""
         if pd.isna(price_str):
             return None
         
-        # Convertir a string si no lo es
-        price_str = str(price_str).strip()
+        original = str(price_str).strip()
         
-        # RECHAZO INMEDIATO: Si el string contiene letras (excepto símbolos de moneda), no es un precio
-        if re.search(r'[a-zA-Z]', price_str):
+        # Debug para valores problemáticos
+        debug_this = len(self.debug_log) < 50 or any(x in original.lower() for x in ['error', 'n/a', '#'])
+        
+        if debug_this:
+            self.log_debug(f"🧹 LIMPIANDO precio: '{original}' (tipo: {type(price_str)})")
+        
+        # Validaciones con debug
+        if re.search(r'[a-zA-Z]', original):
+            if debug_this:
+                self.log_debug(f"❌ RECHAZADO por letras: '{original}'")
             return None
         
-        # RECHAZO INMEDIATO: Si contiene "X" o "x" (indicador de cantidad), no es un precio
-        if 'X' in price_str.upper():
-            return None
-            
-        # RECHAZO INMEDIATO: Si es solo un número sin formato de precio (sin $, puntos, comas)
-        # y es menor a 3 dígitos, probablemente es cantidad, no precio
-        if re.match(r'^\d{1,2}$', price_str):
+        if 'X' in original.upper():
+            if debug_this:
+                self.log_debug(f"❌ RECHAZADO por 'X': '{original}'")
             return None
         
-        # Debe tener al menos un dígito
-        if not re.search(r'\d', price_str):
+        if re.match(r'^\d{1,2}$', original) and float(original) < 5:
+            if debug_this:
+                self.log_debug(f"❌ RECHAZADO por ser muy pequeño: '{original}'")
             return None
         
-        # Remover símbolos de moneda al inicio
-        price_str = re.sub(r'^[\$€£¥₹₩₽¢]+\s*', '', price_str)
-        
-        # Remover caracteres no numéricos excepto puntos y comas
-        clean_price = re.sub(r'[^\d.,]', '', price_str)
-        
-        # Si después de limpiar no queda nada o solo caracteres, rechazar
-        if not clean_price or clean_price in ['.', ',', '.,', ',.']:
+        if not re.search(r'\d', original):
+            if debug_this:
+                self.log_debug(f"❌ RECHAZADO por no tener dígitos: '{original}'")
             return None
         
-        # Si es un solo dígito después de limpiar, probablemente no es precio
-        if len(clean_price) == 1:
+        # Limpieza
+        cleaned = re.sub(r'^[\$€£¥₹\s]+', '', original)
+        cleaned = re.sub(r'[^\d.,]', '', cleaned)
+        
+        if not cleaned or cleaned in ['.', ',', '.,', ',.']:
+            if debug_this:
+                self.log_debug(f"❌ RECHAZADO después de limpiar: '{original}' → '{cleaned}'")
             return None
-            
-        # Manejar formato argentino (coma como decimal)
-        if ',' in clean_price and '.' in clean_price:
-            # Si tiene ambos, asumir que el punto es separador de miles
-            clean_price = clean_price.replace('.', '').replace(',', '.')
-        elif ',' in clean_price:
-            # Si solo tiene coma, puede ser decimal
-            clean_price = clean_price.replace(',', '.')
         
         try:
-            price_value = float(clean_price)
-            # Validar que el precio sea razonable 
-            # Precios muy bajos probablemente son cantidades, no precios
-            if price_value <= 0.10 or price_value > 999999:
+            # Manejo de formato argentino
+            if ',' in cleaned and '.' in cleaned:
+                cleaned = cleaned.replace('.', '').replace(',', '.')
+            elif ',' in cleaned and cleaned.count(',') == 1:
+                parts = cleaned.split(',')
+                if len(parts[1]) <= 2:
+                    cleaned = cleaned.replace(',', '.')
+            
+            price_value = float(cleaned)
+            
+            if price_value <= 0.01 or price_value > 999999:
+                if debug_this:
+                    self.log_debug(f"❌ RECHAZADO por rango: '{original}' → {price_value}")
                 return None
+            
+            if debug_this:
+                self.log_debug(f"✅ ACEPTADO: '{original}' → {price_value}")
+            
             return price_value
-        except:
+            
+        except (ValueError, TypeError) as e:
+            if debug_this:
+                self.log_debug(f"❌ ERROR conversión: '{original}' → '{cleaned}' - {e}")
             return None
     
     def process_excel_file(self, file_path, supplier_name):
-        """Procesa un archivo Excel y extrae productos y precios"""
+        """Procesa Excel con debugging exhaustivo"""
+        self.debug_log = []  # Reset log
+        self.log_debug(f"🚀 INICIANDO procesamiento: {supplier_name} - {file_path}")
+        self.log_debug(f"🚫 COLUMNAS A IGNORAR: {self.columns_to_ignore}")
+        
+        # Análisis previo de estructura
+        structure = self.analyze_excel_structure(file_path)
+        self.log_debug(f"📊 ESTRUCTURA ANALIZADA: {structure.get('total_sheets', 0)} hojas")
+        
         excel_file = None
-        debug_info = []
         
         try:
-            print(f"🔍 Procesando archivo: {file_path}")
-            
-            # Leer todas las hojas del Excel
             excel_file = pd.ExcelFile(file_path)
             all_products = []
-            
-            print(f"📊 Hojas encontradas en {supplier_name}: {excel_file.sheet_names}")
-            debug_info.append(f"Hojas: {', '.join(excel_file.sheet_names)}")
+            sheet_summaries = []
             
             for sheet_name in excel_file.sheet_names:
-                print(f"📋 Procesando hoja: {sheet_name}")
+                self.log_debug(f"📋 PROCESANDO HOJA: {sheet_name}")
+                sheet_summary = self.process_sheet(excel_file, sheet_name, supplier_name)
+                sheet_summaries.append(sheet_summary)
                 
-                try:
-                    # Leer sin especificar header para tener acceso a todas las filas
-                    df = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
-                    
-                    if df.empty:
-                        print(f"⚠️ Hoja {sheet_name} está vacía")
-                        debug_info.append(f"Hoja {sheet_name}: vacía")
-                        continue
-                    
-                    print(f"📏 Dimensiones de {sheet_name}: {df.shape}")
-                    debug_info.append(f"Hoja {sheet_name}: {df.shape[0]} filas, {df.shape[1]} columnas")
-                    
-                    # Buscar primero en headers tradicionales
-                    df_with_header = pd.read_excel(excel_file, sheet_name=sheet_name)
-                    product_col_idx = self.find_column_index(df_with_header, self.possible_product_columns)
-                    price_col_idx = self.find_column_index(df_with_header, self.possible_price_columns)
-                    
-                    header_row = 0  # Por defecto, asumir que la primera fila es el header
-                    
-                    # Si no se encontraron columnas en headers, buscar en las primeras 8 filas
-                    if product_col_idx is None or price_col_idx is None:
-                        print("🔍 No se encontraron columnas en headers, buscando en primeras 8 filas...")
-                        
-                        # Buscar columnas de producto
-                        if product_col_idx is None:
-                            header_row_product, found_product_cols = self.find_column_in_first_rows(
-                                df, self.possible_product_columns
-                            )
-                            if found_product_cols:
-                                product_col_idx = list(found_product_cols.keys())[0]
-                                header_row = max(header_row, header_row_product)
-                                print(f"✅ Columna de producto encontrada en fila {header_row_product}, columna {product_col_idx}")
-                        
-                        # Buscar columnas de precio
-                        if price_col_idx is None:
-                            header_row_price, found_price_cols = self.find_column_in_first_rows(
-                                df, self.possible_price_columns
-                            )
-                            if found_price_cols:
-                                price_col_idx = list(found_price_cols.keys())[0]
-                                header_row = max(header_row, header_row_price)
-                                print(f"✅ Columna de precio encontrada en fila {header_row_price}, columna {price_col_idx}")
-                    
-                    if product_col_idx is None:
-                        print(f"❌ No se encontró columna de producto en {sheet_name}")
-                        debug_info.append(f"Hoja {sheet_name}: No se encontró columna de producto")
-                        continue
-                        
-                    if price_col_idx is None:
-                        print(f"❌ No se encontró columna de precio en {sheet_name}")
-                        print(f"🔍 Columnas disponibles: {list(df_with_header.columns)}")
-                        print(f"📋 Valores de la fila header ({header_row}): {list(df.iloc[header_row].values) if header_row < len(df) else 'Fila no disponible'}")
-                        debug_info.append(f"Hoja {sheet_name}: No se encontró columna de precio. Columnas disponibles: {list(df_with_header.columns)}")
-                        
-                        # PREVENIR ERROR: No permitir que use la misma columna para producto y precio
-                        print(f"⚠️ EVITANDO ERROR: No se puede usar la misma columna para producto y precio")
-                        continue
-                    
-                    # VALIDACIÓN CRÍTICA: Verificar que producto y precio son columnas diferentes
-                    if product_col_idx == price_col_idx:
-                        print(f"❌ ERROR CRÍTICO: La misma columna ({product_col_idx}) se detectó para producto Y precio")
-                        print(f"🔍 Esto indica que no se encontró una columna de precio válida")
-                        print(f"📋 Columnas disponibles: {list(df_with_header.columns)}")
-                        debug_info.append(f"Hoja {sheet_name}: ERROR - misma columna para producto y precio (col {product_col_idx})")
-                        continue
-                    
-                    # Crear DataFrame con el header correcto
-                    if header_row > 0:
-                        # Si encontramos headers en filas posteriores, usar esa fila como header
-                        df_processed = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
-                        # Ajustar los índices de columna ya que el DataFrame cambió
-                        if len(df_processed.columns) > product_col_idx:
-                            product_col = df_processed.columns[product_col_idx]
-                        else:
-                            product_col = product_col_idx
-                        
-                        if len(df_processed.columns) > price_col_idx:
-                            price_col = df_processed.columns[price_col_idx]
-                        else:
-                            price_col = price_col_idx
-                    else:
-                        df_processed = df_with_header
-                        product_col = df_processed.columns[product_col_idx]
-                        price_col = df_processed.columns[price_col_idx]
-                    
-                    print(f"✅ Columnas detectadas - Producto: '{product_col}' (col {product_col_idx}), Precio: '{price_col}' (col {price_col_idx})")
-                    print(f"📍 Header detectado en fila: {header_row}")
-                    debug_info.append(f"Hoja {sheet_name}: Producto='{product_col}', Precio='{price_col}', Header en fila {header_row}")
-                    
-                    # Procesar cada fila
-                    products_in_sheet = 0
-                    skipped_invalid_prices = 0
-                    
-                    for idx, row in df_processed.iterrows():
-                        try:
-                            product = row[product_col]
-                            price_raw = row[price_col]
-                            
-                            # DEBUG: Mostrar exactamente qué está leyendo
-                            if products_in_sheet < 3:  # Solo para los primeros 3 productos
-                                print(f"🔍 DEBUG Fila {idx}:")
-                                print(f"   Producto (columna '{product_col}'): '{product}'")
-                                print(f"   Precio RAW (columna '{price_col}'): '{price_raw}' (tipo: {type(price_raw)})")
-                            
-                            # Solo procesar si hay un producto válido
-                            if pd.notna(product) and str(product).strip():
-                                price = self.clean_price(price_raw)
-                                
-                                # Debug detallado para los primeros casos
-                                if products_in_sheet < 3:
-                                    print(f"   Precio PROCESADO: {price}")
-                                    if price is None:
-                                        print(f"   ❌ PRECIO RECHAZADO: '{price_raw}' no es un precio válido")
-                                    else:
-                                        print(f"   ✅ PRECIO ACEPTADO: {price}")
-                                
-                                if price is not None and price > 0:
-
-                                    product_info = {
-                                        'product': str(product).strip(),
-                                        'price': price,
-                                        'supplier': supplier_name,
-                                        'sheet': sheet_name,
-                                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina'),
-                                        'id': f"{supplier_name}_{sheet_name}_{idx}_{products_in_sheet}"
-                                    }
-
-
-                                    all_products.append(product_info)
-                                    products_in_sheet += 1
-                                elif pd.notna(price_raw):
-                                    skipped_invalid_prices += 1
-                                    
-                        except Exception as row_error:
-                            print(f"❌ Error procesando fila {idx}: {row_error}")
-                            continue  # Saltar filas con errores
-                    
-                    print(f"✅ Productos válidos en {sheet_name}: {products_in_sheet}")
-                    if skipped_invalid_prices > 0:
-                        print(f"⚠️ Precios inválidos omitidos: {skipped_invalid_prices}")
-                    debug_info.append(f"Hoja {sheet_name}: {products_in_sheet} productos válidos, {skipped_invalid_prices} precios inválidos omitidos")
-                    
-                except Exception as sheet_error:
-                    print(f"❌ Error procesando hoja {sheet_name}: {str(sheet_error)}")
-                    debug_info.append(f"Hoja {sheet_name}: Error - {str(sheet_error)}")
-                    continue
+                if sheet_summary.get('products'):
+                    all_products.extend(sheet_summary['products'])
+                    self.log_debug(f"✅ HOJA EXITOSA: {len(sheet_summary['products'])} productos de '{sheet_name}'")
+                else:
+                    self.log_debug(f"❌ HOJA FALLIDA: '{sheet_name}' - {sheet_summary.get('error', 'Sin productos')}")
             
-            print(f"🎉 Total productos procesados para {supplier_name}: {len(all_products)}")
+            # Resumen final
+            self.log_debug(f"🎉 RESUMEN FINAL: {len(all_products)} productos de {len(excel_file.sheet_names)} hojas")
             
-            # Si no se encontraron productos, guardar info de debug
-            if len(all_products) == 0:
-                print(f"⚠️ DIAGNÓSTICO COMPLETO PARA {supplier_name}:")
-                for info in debug_info:
-                    print(f"   {info}")
+            debug_summary = {
+                'supplier': supplier_name,
+                'total_products': len(all_products),
+                'sheets_processed': len(sheet_summaries),
+                'sheets_successful': len([s for s in sheet_summaries if s.get('products')]),
+                'sheet_details': sheet_summaries,
+                'structure_analysis': structure,
+                'columns_ignored': self.columns_to_ignore,
+                'debug_logs': self.get_debug_summary()
+            }
             
-            return all_products, debug_info
+            return all_products, debug_summary
             
         except Exception as e:
-            error_msg = f"Error procesando archivo {file_path}: {str(e)}"
-            print(f"💥 {error_msg}")
-            debug_info.append(f"Error general: {str(e)}")
-            return [], debug_info
+            error_msg = f"💥 ERROR CRÍTICO procesando {file_path}: {str(e)}"
+            self.log_debug(error_msg, "ERROR")
+            return [], {'error': error_msg, 'debug_logs': self.get_debug_summary()}
         finally:
-            # Cerrar el archivo Excel explícitamente
-            if excel_file is not None:
+            if excel_file:
                 try:
                     excel_file.close()
                 except:
                     pass
+    def find_best_header_row(self, df):
+        """
+        Encuentra la mejor fila para usar como headers analizando las primeras filas
+        Retorna un diccionario con información de la mejor fila encontrada
+        """
+        try:
+            if df.empty:
+                return None
+            
+            max_rows_to_check = min(10, len(df))
+            best_analysis = None
+            best_score = 0
+            
+            for row_idx in range(max_rows_to_check):
+                analysis = self.analyze_header_row(df, row_idx)
+                
+                if analysis and analysis.get('score', 0) > best_score:
+                    best_score = analysis['score']
+                    best_analysis = analysis
+                    best_analysis['row_idx'] = row_idx
+            
+            return best_analysis
+            
+        except Exception as e:
+            self.log_debug(f"Error en find_best_header_row: {e}", "ERROR")
+            return None
 
+    def analyze_header_row(self, df, row_idx):
+        """
+        Analiza una fila específica para determinar si es buena como header
+        """
+        try:
+            if row_idx >= len(df):
+                return None
+            
+            row_values = [str(val).lower().strip() if pd.notna(val) else '' for val in df.iloc[row_idx].values]
+            
+            product_matches = []
+            price_matches = []
+            ignored_columns = []
+            score = 0
+            
+            for col_idx, cell_value in enumerate(row_values):
+                if not cell_value:
+                    continue
+                    
+                # Verificar si debe ser ignorada
+                if self.should_ignore_column(cell_value):
+                    ignored_columns.append((col_idx, cell_value))
+                    continue
+                
+                # Buscar coincidencias de producto
+                for prod_pattern in self.possible_product_columns:
+                    if prod_pattern.lower() in cell_value:
+                        product_matches.append((col_idx, cell_value, prod_pattern))
+                        score += 10
+                        break
+                
+                # Buscar coincidencias de precio
+                for price_pattern in self.possible_price_columns:
+                    if price_pattern.lower() in cell_value:
+                        price_matches.append((col_idx, cell_value, price_pattern))
+                        score += 10
+                        break
+            
+            # Penalizar si no encontramos al menos una columna de cada tipo
+            if not product_matches:
+                score -= 20
+            if not price_matches:
+                score -= 20
+                
+            # Penalizar si encontramos la misma columna para producto y precio
+            if product_matches and price_matches:
+                product_cols = {match[0] for match in product_matches}
+                price_cols = {match[0] for match in price_matches}
+                if product_cols.intersection(price_cols):
+                    score -= 30
+            
+            return {
+                'row_idx': row_idx,
+                'score': score,
+                'product_matches': product_matches,
+                'price_matches': price_matches,
+                'ignored_columns': ignored_columns,
+                'total_matches': len(product_matches) + len(price_matches)
+            }
+            
+        except Exception as e:
+            self.log_debug(f"Error analizando fila {row_idx}: {e}", "ERROR")
+            return None
+    def process_sheet(self, excel_file, sheet_name, supplier_name):
+        """Procesa una hoja individual con análisis inteligente de headers"""
+        try:
+            self.log_debug(f"📄 Iniciando hoja: {sheet_name}")
+            
+            # Leer sin header para análisis completo
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+            
+            if df.empty:
+                return {'sheet': sheet_name, 'error': 'Hoja vacía', 'products': []}
+            
+            self.log_debug(f"📐 Dimensiones: {df.shape[0]} filas x {df.shape[1]} columnas")
+            
+            # Buscar la mejor fila de headers
+            best_header_analysis = self.find_best_header_row(df)
+            
+            if best_header_analysis is None:
+                # Fallback: intentar con headers tradicionales
+                self.log_debug("⚠️ Fallback: intentando headers tradicionales")
+                df_with_header = pd.read_excel(excel_file, sheet_name=sheet_name)
+                product_col_idx = self.find_column_index(df_with_header, self.possible_product_columns)
+                price_col_idx = self.find_column_index(df_with_header, self.possible_price_columns)
+                header_row = 0
+            else:
+                # Usar la mejor fila de headers encontrada
+                header_row = best_header_analysis['row_idx']
+                
+                # Extraer índices de columnas
+                if best_header_analysis['product_matches']:
+                    product_col_idx = best_header_analysis['product_matches'][0][0]  # Primera coincidencia
+                    self.log_debug(f"✅ COLUMNA PRODUCTO: {product_col_idx} ('{best_header_analysis['product_matches'][0][1]}')")
+                else:
+                    product_col_idx = None
+                
+                if best_header_analysis['price_matches']:
+                    price_col_idx = best_header_analysis['price_matches'][0][0]  # Primera coincidencia
+                    self.log_debug(f"✅ COLUMNA PRECIO: {price_col_idx} ('{best_header_analysis['price_matches'][0][1]}')")
+                else:
+                    price_col_idx = None
+            
+            # Validaciones críticas
+            if product_col_idx is None:
+                content_analysis = self.analyze_content_structure(df)
+                error = f"No se encontró columna de producto. Análisis: {content_analysis}"
+                self.log_debug(f"❌ {error}", "ERROR")
+                return {'sheet': sheet_name, 'error': error, 'products': []}
+            
+            if price_col_idx is None:
+                content_analysis = self.analyze_content_structure(df)
+                error = f"No se encontró columna de precio. Análisis: {content_analysis}"
+                self.log_debug(f"❌ {error}", "ERROR")
+                return {'sheet': sheet_name, 'error': error, 'products': []}
+            
+            if product_col_idx == price_col_idx:
+                error = f"La misma columna ({product_col_idx}) detectada para producto Y precio"
+                self.log_debug(f"❌ CRÍTICO: {error}", "ERROR")
+                deeper_analysis = self.deep_column_analysis(df, product_col_idx)
+                error += f". Análisis profundo: {deeper_analysis}"
+                return {'sheet': sheet_name, 'error': error, 'products': []}
+            
+            # Procesar datos desde la fila correcta
+            self.log_debug(f"📋 USANDO HEADER desde fila: {header_row}")
+            
+            if header_row > 0:
+                # Leer desde la fila de headers + 1 para los datos
+                df_processed = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
+                
+                # Verificar que las columnas aún existan
+                if product_col_idx >= len(df_processed.columns) or price_col_idx >= len(df_processed.columns):
+                    # Si las columnas están fuera de rango, usar índices numéricos
+                    self.log_debug(f"⚠️ Usando índices numéricos: producto={product_col_idx}, precio={price_col_idx}")
+                    # Leer datos como matriz sin headers
+                    df_data = pd.read_excel(excel_file, sheet_name=sheet_name, header=None, skiprows=header_row+1)
+                    
+                    return self.process_data_by_index(df_data, product_col_idx, price_col_idx, supplier_name, sheet_name, header_row)
+                else:
+                    product_col = df_processed.columns[product_col_idx]
+                    price_col = df_processed.columns[price_col_idx]
+            else:
+                df_with_header = pd.read_excel(excel_file, sheet_name=sheet_name)
+                df_processed = df_with_header
+                product_col = df_processed.columns[product_col_idx]
+                price_col = df_processed.columns[price_col_idx]
+            
+            self.log_debug(f"🎯 COLUMNAS FINALES - Producto: '{product_col}' (col {product_col_idx}), Precio: '{price_col}' (col {price_col_idx})")
+            
+            # Procesar filas
+            return self.process_data_by_column_name(df_processed, product_col, price_col, supplier_name, sheet_name, header_row)
+            
+        except Exception as e:
+            error = f"Error procesando hoja {sheet_name}: {str(e)}"
+            self.log_debug(f"💥 {error}", "ERROR")
+            return {'sheet': sheet_name, 'error': error, 'products': []}
+
+    def process_data_by_index(self, df_data, product_col_idx, price_col_idx, supplier_name, sheet_name, header_row):
+        """Procesa datos usando índices numéricos"""
+        products = []
+        stats = {'processed': 0, 'valid_products': 0, 'invalid_prices': 0, 'empty_products': 0}
+        
+        for idx, row in df_data.iterrows():
+            stats['processed'] += 1
+            
+            try:
+                if product_col_idx < len(row) and price_col_idx < len(row):
+                    product = row.iloc[product_col_idx]
+                    price_raw = row.iloc[price_col_idx]
+                    
+                    if pd.isna(product) or not str(product).strip():
+                        stats['empty_products'] += 1
+                        continue
+                    
+                    price = self.clean_price(price_raw)
+                    
+                    if price is not None and price > 0:
+                        products.append({
+                            'product': str(product).strip(),
+                            'price': price,
+                            'supplier': supplier_name,
+                            'sheet': sheet_name,
+                            'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina'),
+                            'id': f"{supplier_name}_{sheet_name}_{idx}_{len(products)}"
+                        })
+                        stats['valid_products'] += 1
+                    else:
+                        stats['invalid_prices'] += 1
+                
+            except Exception as row_error:
+                self.log_debug(f"❌ Error fila {idx}: {row_error}", "WARNING")
+                continue
+        
+        return {
+            'sheet': sheet_name,
+            'products': products,
+            'stats': stats,
+            'columns_used': {'product': f'Col_{product_col_idx}', 'price': f'Col_{price_col_idx}'},
+            'header_row': header_row
+        }
+
+    def process_data_by_column_name(self, df_processed, product_col, price_col, supplier_name, sheet_name, header_row):
+        """Procesa datos usando nombres de columnas"""
+        products = []
+        stats = {'processed': 0, 'valid_products': 0, 'invalid_prices': 0, 'empty_products': 0}
+        
+        for idx, row in df_processed.iterrows():
+            stats['processed'] += 1
+            
+            try:
+                product = row[product_col]
+                price_raw = row[price_col]
+                
+                if pd.isna(product) or not str(product).strip():
+                    stats['empty_products'] += 1
+                    continue
+                
+                price = self.clean_price(price_raw)
+                
+                if price is not None and price > 0:
+                    products.append({
+                        'product': str(product).strip(),
+                        'price': price,
+                        'supplier': supplier_name,
+                        'sheet': sheet_name,
+                        'location': DEFAULT_LOCATIONS.get(supplier_name, 'Buenos Aires, Argentina'),
+                        'id': f"{supplier_name}_{sheet_name}_{idx}_{len(products)}"
+                    })
+                    stats['valid_products'] += 1
+                else:
+                    stats['invalid_prices'] += 1
+                    
+            except Exception as row_error:
+                self.log_debug(f"❌ Error fila {idx}: {row_error}", "WARNING")
+                continue
+        
+        self.log_debug(f"📈 ESTADÍSTICAS: {stats}")
+        
+        return {
+            'sheet': sheet_name,
+            'products': products,
+            'stats': stats,
+            'columns_used': {'product': product_col, 'price': price_col},
+            'header_row': header_row
+        }
+    
+    def analyze_content_structure(self, df):
+        """Analiza la estructura del contenido para sugerir alternativas"""
+        try:
+            analysis = {
+                'total_rows': len(df),
+                'total_cols': len(df.columns) if not df.empty else 0,
+                'non_empty_cells_per_col': [],
+                'sample_data': []
+            }
+            
+            if df.empty:
+                return analysis
+            
+            # Analizar cada columna
+            for col_idx in range(min(df.shape[1], 10)):  # Máximo 10 columnas
+                non_empty = df.iloc[:, col_idx].count()
+                analysis['non_empty_cells_per_col'].append({
+                    'column': col_idx,
+                    'non_empty_cells': non_empty,
+                    'percentage': round((non_empty / len(df)) * 100, 1)
+                })
+            
+            # Muestra de las primeras 3 filas
+            for row_idx in range(min(3, len(df))):
+                row_data = [str(val)[:20] if pd.notna(val) else '' for val in df.iloc[row_idx].values[:5]]
+                analysis['sample_data'].append(row_data)
+            
+            return analysis
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def deep_column_analysis(self, df, col_idx):
+        """Análisis profundo de una columna específica"""
+        try:
+            if df.empty or col_idx >= df.shape[1]:
+                return "Columna fuera de rango"
+            
+            col_data = df.iloc[:, col_idx].dropna()
+            if col_data.empty:
+                return "Columna vacía"
+            
+            sample_values = col_data.head(5).tolist()
+            analysis = {
+                'sample_values': [str(val)[:30] for val in sample_values],
+                'total_non_empty': len(col_data),
+                'unique_values': len(col_data.unique())
+            }
+            
+            return analysis
+        except Exception as e:
+            return f"Error en análisis: {str(e)}"
 # Crear instancia del procesador
 processor = PriceListProcessor()
 
@@ -384,6 +788,194 @@ processor = PriceListProcessor()
 def index():
     return render_template('index.html')
 
+def analyze_processing_failure(debug_summary, supplier_name):
+    """Analiza por qué falló el procesamiento y genera diagnóstico detallado"""
+    
+    failure_analysis = {
+        'supplier': supplier_name,
+        'primary_issues': [],
+        'sheet_analysis': [],
+        'column_detection_issues': [],
+        'data_quality_issues': [],
+        'recommendations': []
+    }
+    
+    # Analizar detalles de hojas si están disponibles
+    sheet_details = debug_summary.get('sheet_details', [])
+    
+    for sheet_info in sheet_details:
+        sheet_name = sheet_info.get('sheet', 'Unknown')
+        
+        sheet_analysis = {
+            'sheet_name': sheet_name,
+            'status': 'failed' if sheet_info.get('error') else 'processed',
+            'error': sheet_info.get('error'),
+            'products_found': len(sheet_info.get('products', [])),
+            'stats': sheet_info.get('stats', {})
+        }
+        
+        # Identificar problemas específicos
+        if sheet_info.get('error'):
+            error_msg = sheet_info['error'].lower()
+            
+            if 'no se encontró columna de producto' in error_msg:
+                failure_analysis['column_detection_issues'].append({
+                    'sheet': sheet_name,
+                    'issue': 'product_column_not_found',
+                    'detail': sheet_info['error']
+                })
+            
+            if 'no se encontró columna de precio' in error_msg:
+                failure_analysis['column_detection_issues'].append({
+                    'sheet': sheet_name,
+                    'issue': 'price_column_not_found',
+                    'detail': sheet_info['error']
+                })
+                
+            if 'misma columna' in error_msg:
+                failure_analysis['column_detection_issues'].append({
+                    'sheet': sheet_name,
+                    'issue': 'same_column_detected',
+                    'detail': sheet_info['error']
+                })
+        
+        # Analizar calidad de datos
+        stats = sheet_info.get('stats', {})
+        if stats:
+            if stats.get('invalid_prices', 0) > stats.get('valid_products', 0):
+                failure_analysis['data_quality_issues'].append({
+                    'sheet': sheet_name,
+                    'issue': 'too_many_invalid_prices',
+                    'invalid_prices': stats.get('invalid_prices', 0),
+                    'valid_products': stats.get('valid_products', 0)
+                })
+            
+            if stats.get('empty_products', 0) > stats.get('processed', 1) * 0.5:
+                failure_analysis['data_quality_issues'].append({
+                    'sheet': sheet_name,
+                    'issue': 'too_many_empty_products',
+                    'empty_products': stats.get('empty_products', 0),
+                    'processed': stats.get('processed', 0)
+                })
+        
+        failure_analysis['sheet_analysis'].append(sheet_analysis)
+    
+    # Determinar problemas primarios
+    if failure_analysis['column_detection_issues']:
+        failure_analysis['primary_issues'].append('column_detection_failed')
+    
+    if failure_analysis['data_quality_issues']:
+        failure_analysis['primary_issues'].append('poor_data_quality')
+    
+    if not sheet_details:
+        failure_analysis['primary_issues'].append('no_sheets_processed')
+    
+    return failure_analysis
+
+def generate_recommendations(failure_analysis):
+    """Genera recomendaciones específicas basadas en el análisis de fallo"""
+    
+    recommendations = []
+    
+    # Recomendaciones para detección de columnas
+    for issue in failure_analysis.get('column_detection_issues', []):
+        if issue['issue'] == 'product_column_not_found':
+            recommendations.append({
+                'type': 'column_naming',
+                'priority': 'high',
+                'message': f"En la hoja '{issue['sheet']}': Asegúrese de que haya una columna con nombre como 'Producto', 'Descripción', 'Nombre', etc.",
+                'detailed_suggestion': "Las columnas de producto deben tener headers claros. Evite espacios extra o caracteres especiales."
+            })
+        
+        elif issue['issue'] == 'price_column_not_found':
+            recommendations.append({
+                'type': 'column_naming',
+                'priority': 'high', 
+                'message': f"En la hoja '{issue['sheet']}': Asegúrese de que haya una columna con nombre como 'Precio', 'Cost', 'Valor', etc.",
+                'detailed_suggestion': "Las columnas de precio deben contener valores numéricos. Evite texto como 'Consultar' o 'N/A'."
+            })
+    
+    # Recomendaciones para calidad de datos
+    for issue in failure_analysis.get('data_quality_issues', []):
+        if issue['issue'] == 'too_many_invalid_prices':
+            recommendations.append({
+                'type': 'data_quality',
+                'priority': 'medium',
+                'message': f"En la hoja '{issue['sheet']}': Muchos precios no son válidos ({issue['invalid_prices']} inválidos vs {issue['valid_products']} válidos)",
+                'detailed_suggestion': "Revise que los precios sean números sin texto adicional. Evite valores como 'Consultar', ', o celdas vacías."
+            })
+        
+        elif issue['issue'] == 'too_many_empty_products':
+            recommendations.append({
+                'type': 'data_quality',
+                'priority': 'low',
+                'message': f"En la hoja '{issue['sheet']}': Muchas filas sin nombre de producto ({issue['empty_products']} vacías de {issue['processed']} procesadas)",
+                'detailed_suggestion': "Elimine filas vacías o asegúrese de que cada producto tenga un nombre válido."
+            })
+    
+    # Recomendaciones generales
+    if not recommendations:
+        recommendations.append({
+            'type': 'general',
+            'priority': 'high',
+            'message': "No se detectaron problemas específicos. El archivo puede tener un formato no estándar.",
+            'detailed_suggestion': "Intente usar un archivo Excel simple con columnas claras: 'Producto' y 'Precio' en la primera fila."
+        })
+    
+    return recommendations
+
+def analyze_success(debug_summary, total_products):
+    """Analiza el éxito del procesamiento y genera resumen"""
+    
+    success_summary = {
+        'total_products_loaded': total_products,
+        'sheets_summary': [],
+        'processing_efficiency': {},
+        'data_quality_score': 0
+    }
+    
+    sheet_details = debug_summary.get('sheet_details', [])
+    total_processed = 0
+    total_valid = 0
+    total_invalid_prices = 0
+    
+    for sheet_info in sheet_details:
+        stats = sheet_info.get('stats', {})
+        sheet_products = len(sheet_info.get('products', []))
+        
+        sheet_summary = {
+            'sheet_name': sheet_info.get('sheet', 'Unknown'),
+            'products_extracted': sheet_products,
+            'rows_processed': stats.get('processed', 0),
+            'success_rate': (sheet_products / max(stats.get('processed', 1), 1)) * 100,
+            'columns_used': sheet_info.get('columns_used', {}),
+            'header_row': sheet_info.get('header_row', 0)
+        }
+        
+        success_summary['sheets_summary'].append(sheet_summary)
+        
+        # Acumular estadísticas
+        total_processed += stats.get('processed', 0)
+        total_valid += sheet_products
+        total_invalid_prices += stats.get('invalid_prices', 0)
+    
+    # Calcular eficiencia y calidad
+    if total_processed > 0:
+        success_summary['processing_efficiency'] = {
+            'total_rows_processed': total_processed,
+            'products_extracted': total_valid,
+            'extraction_rate': (total_valid / total_processed) * 100,
+            'invalid_prices_found': total_invalid_prices,
+            'price_validation_rate': (total_valid / max(total_valid + total_invalid_prices, 1)) * 100
+        }
+        
+        # Score de calidad (0-100)
+        extraction_rate = (total_valid / total_processed) * 100
+        price_validation_rate = (total_valid / max(total_valid + total_invalid_prices, 1)) * 100
+        
+        success_summary['data_quality_score'] = round((extraction_rate + price_validation_rate) / 2, 1)
+    
+    return success_summary
 @app.route('/upload', methods=['POST'])
 def upload_file():
     # 1) Validaciones básicas
@@ -393,7 +985,7 @@ def upload_file():
     file = request.files['file']
     supplier_name = (request.form.get('supplier_name') or '').strip() or 'Proveedor Sin Nombre'
 
-    # NUEVO: leer direccion y telefono
+    # NUEVO: leer dirección y teléfono
     supplier_address = (request.form.get('supplier_address') or '').strip()
     supplier_phone   = (request.form.get('supplier_phone') or '').strip()
     supplier_email   = (request.form.get('supplier_email') or '').strip()
@@ -410,65 +1002,106 @@ def upload_file():
 
     proveedor_status = 'SKIPPED'
     db_status = 'SKIPPED'
+    debug_summary = {}
 
     try:
         file.save(filepath)
+        print(f"📁 Archivo guardado temporalmente: {filepath}")
 
-        # 3) Guardar/actualizar datos del proveedor (no cortar flujo si falla)
+        # 3) Guardar/actualizar datos del proveedor
         try:
             upsert_proveedor(supplier_name, supplier_address, supplier_phone, supplier_email)
             proveedor_status = 'OK'
+            print(f"✅ Proveedor actualizado: {supplier_name}")
         except Exception as e:
             proveedor_status = f'ERROR proveedor: {e}'
+            print(f"❌ Error actualizando proveedor: {e}")
 
-        # 4) Procesar Excel → obtener productos
+        # 4) Procesar Excel → obtener productos con debugging mejorado
+        print(f"🔄 Iniciando procesamiento de {filepath} para {supplier_name}")
         products, debug_info = processor.process_excel_file(filepath, supplier_name)
+        
+        # Almacenar información de debug completa
+        debug_summary = debug_info if isinstance(debug_info, dict) else {'debug_logs': debug_info}
+        
+        print(f"📊 Procesamiento completado: {len(products)} productos encontrados")
 
+        # 5) Análisis detallado de por qué falló (si es el caso)
         if not products:
-            # No cortamos con 500; devolvemos 200 con success=False y debug
+            failure_analysis = analyze_processing_failure(debug_summary, supplier_name)
+            
             return jsonify({
                 'success': False,
                 'message': 'No se pudieron extraer productos del archivo',
                 'supplier': supplier_name,
+                'filename': file.filename,
                 'proveedor_status': proveedor_status,
                 'db_status': db_status,
-                'debug_info': debug_info
+                'debug_info': debug_summary,
+                'failure_analysis': failure_analysis,
+                'recommendations': generate_recommendations(failure_analysis)
             }), 200
 
-        # 5) Guardar productos en MySQL (SOBREESCRIBE por proveedor)
+        # 6) Guardar productos en MySQL
         try:
+            print(f"💾 Guardando {len(products)} productos en BD...")
             guardar_productos_en_bd(supplier_name, products)
             db_status = 'OK'
+            print(f"✅ Productos guardados exitosamente en BD")
         except Exception as db_err:
             db_status = f'ERROR DB: {db_err}'
+            print(f"❌ Error guardando en BD: {db_err}")
 
-        # 6) Respuesta única y coherente
+        # 7) Respuesta exitosa con información detallada
+        success_summary = analyze_success(debug_summary, len(products))
+        
         return jsonify({
             'success': True,
-            'message': f'Archivo procesado. {len(products)} productos cargados.',
+            'message': f'Archivo procesado exitosamente. {len(products)} productos cargados.',
             'supplier': supplier_name,
+            'filename': file.filename,
             'total_products': len(products),
             'proveedor_status': proveedor_status,
             'db_status': db_status,
-            'debug_info': debug_info[:5]  # un poquito de diagnóstico
+            'processing_summary': success_summary,
+            'debug_available': True,
+            'debug_info': {
+                'sheets_processed': debug_summary.get('sheets_processed', 0),
+                'sheets_successful': debug_summary.get('sheets_successful', 0),
+                'structure_analysis': debug_summary.get('structure_analysis', {}),
+                'recent_logs': debug_summary.get('debug_logs', {}).get('recent_logs', [])
+            }
         }), 200
 
     except Exception as e:
         # Error general en procesamiento/carga
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'supplier': supplier_name,
+            'filename': file.filename,
+            'debug_summary': debug_summary
+        }
+        
+        print(f"💥 ERROR CRÍTICO: {error_details}")
+        
         return jsonify({
             'success': False,
-            'message': f'Error procesando archivo: {str(e)}',
-            'supplier': supplier_name
+            'message': f'Error crítico procesando archivo: {str(e)}',
+            'error_details': error_details,
+            'proveedor_status': proveedor_status,
+            'db_status': db_status
         }), 500
 
     finally:
-        # 7) Limpiar archivo temporal siempre
+        # 8) Limpiar archivo temporal siempre
         try:
             if os.path.exists(filepath):
                 os.remove(filepath)
-        except:
-            pass
-
+                print(f"🗑️ Archivo temporal eliminado: {filepath}")
+        except Exception as cleanup_error:
+            print(f"⚠️ No se pudo eliminar archivo temporal: {cleanup_error}")
+            
 @app.route('/search')
 @login_required
 def search_products():
@@ -493,7 +1126,314 @@ def search_products():
         'query': q,
         'suppliers_count': len(set(r['proveedor'] for r in filas))
     })
+# Agregar estos endpoints al final de tu app.py
 
+@app.route('/debug/analyze_file', methods=['POST'])
+@login_required
+def debug_analyze_file():
+    """Endpoint para analizar un archivo sin procesarlo completamente"""
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+    
+    # Guardar temporalmente
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    try:
+        file.save(filepath)
+        
+        # Solo analizar estructura, no procesar
+        structure = processor.analyze_excel_structure(filepath)
+        
+        return jsonify({
+            'success': True,
+            'filename': file.filename,
+            'analysis': structure,
+            'message': 'Análisis completado'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Error analizando archivo'
+        }), 500
+        
+    finally:
+        # Limpiar archivo temporal
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except:
+            pass
+
+@app.route('/debug/test_price_cleaning', methods=['POST'])
+@login_required
+def debug_test_price_cleaning():
+    """Endpoint para probar la limpieza de precios con valores específicos"""
+    data = request.get_json()
+    test_values = data.get('test_values', [])
+    
+    if not test_values:
+        # Valores de prueba por defecto
+        test_values = [
+            "$123.45", "€50,30", "1234", "12.345,67", "N/A", 
+            "Consultar", "123X2", "0.50", "999999", "",
+            "12,50", "1.234.567,89", "$", "abc123", "123.456"
+        ]
+    
+    results = []
+    processor_temp = PriceListProcessor()  # Nueva instancia para test limpio
+    
+    for test_value in test_values:
+        try:
+            cleaned = processor_temp.clean_price(test_value)
+            results.append({
+                'input': test_value,
+                'output': cleaned,
+                'status': 'accepted' if cleaned is not None else 'rejected',
+                'type': type(test_value).__name__
+            })
+        except Exception as e:
+            results.append({
+                'input': test_value,
+                'output': None,
+                'status': 'error',
+                'error': str(e)
+            })
+    
+    return jsonify({
+        'success': True,
+        'test_results': results,
+        'summary': {
+            'total_tested': len(test_values),
+            'accepted': len([r for r in results if r['status'] == 'accepted']),
+            'rejected': len([r for r in results if r['status'] == 'rejected']),
+            'errors': len([r for r in results if r['status'] == 'error'])
+        }
+    })
+
+@app.route('/debug/column_detection', methods=['POST'])
+@login_required
+def debug_column_detection():
+    """Endpoint para probar detección de columnas con headers específicos"""
+    data = request.get_json()
+    test_headers = data.get('headers', [])
+    
+    if not test_headers:
+        # Headers de prueba por defecto
+        test_headers = [
+            ['Producto', 'Precio', 'Stock'],
+            ['DESCRIPCION', 'COSTO', 'CANTIDAD'],
+            ['Item', 'Valor', 'Disponible'],
+            ['Nombre del Producto', 'Precio Unitario', 'Existencias'],
+            ['Col1', 'Col2', 'Col3'],  # Sin nombres descriptivos
+            ['', 'precio', ''],        # Header parcialmente vacío
+            ['Artículo', 'Importe c/IVA', 'Observaciones']
+        ]
+    
+    processor_temp = PriceListProcessor()
+    results = []
+    
+    for i, headers in enumerate(test_headers):
+        # Crear DataFrame temporal para prueba
+        import pandas as pd
+        df_test = pd.DataFrame(columns=headers)
+        
+        # Probar detección
+        product_idx = processor_temp.find_column_index(df_test, processor_temp.possible_product_columns)
+        price_idx = processor_temp.find_column_index(df_test, processor_temp.possible_price_columns)
+        
+        results.append({
+            'test_case': i + 1,
+            'headers': headers,
+            'product_column_detected': {
+                'index': product_idx,
+                'column_name': headers[product_idx] if product_idx is not None else None
+            },
+            'price_column_detected': {
+                'index': price_idx,
+                'column_name': headers[price_idx] if price_idx is not None else None
+            },
+            'detection_success': product_idx is not None and price_idx is not None,
+            'same_column_error': product_idx == price_idx if both_detected(product_idx, price_idx) else False
+        })
+    
+    return jsonify({
+        'success': True,
+        'detection_results': results,
+        'summary': {
+            'total_tested': len(test_headers),
+            'successful_detections': len([r for r in results if r['detection_success']]),
+            'failed_detections': len([r for r in results if not r['detection_success']]),
+            'same_column_errors': len([r for r in results if r['same_column_error']])
+        },
+        'column_patterns': {
+            'product_patterns': processor_temp.possible_product_columns,
+            'price_patterns': processor_temp.possible_price_columns
+        }
+    })
+
+def both_detected(prod_idx, price_idx):
+    """Helper para verificar si ambos índices fueron detectados"""
+    return prod_idx is not None and price_idx is not None
+
+@app.route('/debug/processing_stats')
+@login_required
+def debug_processing_stats():
+    """Estadísticas generales de procesamiento desde la BD"""
+    try:
+        conn = get_connection()
+        cur = conn.cursor(dictionary=True)
+        
+        # Estadísticas por proveedor
+        cur.execute("""
+            SELECT 
+                p.proveedor,
+                COUNT(*) as total_productos,
+                AVG(p.precio) as precio_promedio,
+                MIN(p.precio) as precio_minimo,
+                MAX(p.precio) as precio_maximo,
+                MAX(p.actualizado_a) as ultima_actualizacion,
+                pr.direccion,
+                pr.telefono,
+                pr.email
+            FROM productos p
+            LEFT JOIN proveedores_config pr ON pr.proveedor = p.proveedor
+            GROUP BY p.proveedor, pr.direccion, pr.telefono, pr.email
+            ORDER BY total_productos DESC
+        """)
+        
+        supplier_stats = cur.fetchall()
+        
+        # Estadísticas globales
+        cur.execute("SELECT COUNT(DISTINCT proveedor) as total_suppliers FROM productos")
+        total_suppliers = cur.fetchone()['total_suppliers']
+        
+        cur.execute("SELECT COUNT(*) as total_products FROM productos")
+        total_products = cur.fetchone()['total_products']
+        
+        cur.execute("SELECT AVG(precio) as global_avg_price FROM productos")
+        global_avg_price = cur.fetchone()['global_avg_price']
+        
+        # Productos con precios potencialmente problemáticos
+        cur.execute("""
+            SELECT proveedor, producto, precio 
+            FROM productos 
+            WHERE precio < 1 OR precio > 100000 
+            ORDER BY precio DESC 
+            LIMIT 20
+        """)
+        problematic_prices = cur.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'global_stats': {
+                'total_suppliers': total_suppliers,
+                'total_products': total_products,
+                'global_avg_price': float(global_avg_price) if global_avg_price else 0
+            },
+            'supplier_details': [
+                {
+                    'supplier': s['proveedor'],
+                    'products': s['total_productos'],
+                    'avg_price': float(s['precio_promedio']) if s['precio_promedio'] else 0,
+                    'price_range': {
+                        'min': float(s['precio_minimo']) if s['precio_minimo'] else 0,
+                        'max': float(s['precio_maximo']) if s['precio_maximo'] else 0
+                    },
+                    'last_update': s['ultima_actualizacion'].isoformat() if s['ultima_actualizacion'] else None,
+                    'contact_info': {
+                        'address': s['direccion'] or '',
+                        'phone': s['telefono'] or '',
+                        'email': s['email'] or ''
+                    }
+                } for s in supplier_stats
+            ],
+            'data_quality_alerts': [
+                {
+                    'supplier': p['proveedor'],
+                    'product': p['producto'],
+                    'price': float(p['precio']),
+                    'alert_type': 'very_low_price' if p['precio'] < 1 else 'very_high_price'
+                } for p in problematic_prices
+            ]
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Error obteniendo estadísticas de debugging'
+        }), 500
+
+@app.route('/debug/logs/<supplier_name>')
+@login_required
+def debug_get_logs(supplier_name):
+    """Obtiene logs detallados del último procesamiento de un proveedor"""
+    # Esto requeriría almacenar logs en BD o archivos
+    # Por ahora retorna información básica
+    
+    try:
+        conn = get_connection()
+        cur = conn.cursor(dictionary=True)
+        
+        # Información del proveedor
+        cur.execute("""
+            SELECT 
+                COUNT(*) as total_productos,
+                AVG(precio) as precio_promedio,
+                MIN(actualizado_a) as primera_carga,
+                MAX(actualizado_a) as ultima_carga
+            FROM productos 
+            WHERE proveedor = %s
+        """, (supplier_name,))
+        
+        supplier_info = cur.fetchone()
+        
+        # Muestra de productos
+        cur.execute("""
+            SELECT producto, precio, actualizado_a
+            FROM productos 
+            WHERE proveedor = %s 
+            ORDER BY actualizado_a DESC 
+            LIMIT 10
+        """, (supplier_name,))
+        
+        sample_products = cur.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'supplier': supplier_name,
+            'summary': {
+                'total_products': supplier_info['total_productos'],
+                'avg_price': float(supplier_info['precio_promedio']) if supplier_info['precio_promedio'] else 0,
+                'first_load': supplier_info['primera_carga'].isoformat() if supplier_info['primera_carga'] else None,
+                'last_load': supplier_info['ultima_carga'].isoformat() if supplier_info['ultima_carga'] else None
+            },
+            'sample_products': [
+                {
+                    'product': p['producto'],
+                    'price': float(p['precio']),
+                    'loaded_at': p['actualizado_a'].isoformat() if p['actualizado_a'] else None
+                } for p in sample_products
+            ],
+            'note': 'Para logs detallados de procesamiento, debe implementarse sistema de logging persistente'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 @app.route('/lists')
 @login_required
 def get_loaded_lists():
@@ -530,12 +1470,12 @@ def get_loaded_lists():
 @app.route('/stats')
 @login_required
 def stats():
-    """Estadísticas directas desde la BD."""
+    """Estadisticas directas desde la BD."""
     conn = get_connection()
     try:
         cur = conn.cursor()
 
-        # Total de listas = cantidad de proveedores únicos
+        # Total de listas = cantidad de proveedores unicos
         cur.execute("SELECT COUNT(DISTINCT proveedor) FROM productos")
         total_lists = cur.fetchone()[0] or 0
 
@@ -543,7 +1483,7 @@ def stats():
         cur.execute("SELECT COUNT(*) FROM productos")
         total_products = cur.fetchone()[0] or 0
 
-        # Última actualización global (por si querés mostrarla más adelante)
+        # ultima actualizacion global (por si queres mostrarla mas adelante)
         cur.execute("SELECT MAX(actualizado_a) FROM productos")
         last_update_row = cur.fetchone()
         last_update = (
@@ -560,108 +1500,357 @@ def stats():
         conn.close()
 
 
+## CART ##
+# Usar threading.Lock para evitar problemas de concurrencia
+import threading
+from collections import defaultdict
 
+# Cambiar a defaultdict con lock para thread safety
+cart_lock = threading.Lock()
+user_carts = defaultdict(list)
 
+def get_user_cart(user):
+    """Obtener carrito del usuario de forma thread-safe"""
+    with cart_lock:
+        return user_carts[user].copy()
 
+def set_user_cart(user, cart):
+    """Establecer carrito del usuario de forma thread-safe"""
+    with cart_lock:
+        user_carts[user] = cart
 
 @app.route('/cart/add', methods=['POST'])
 @login_required
 def add_to_cart():
     """Agregar producto al carrito del usuario."""
-    user = session['user']
-    data = request.get_json()
-    
-    product_id = data.get('product_id')
-    product_name = data.get('product_name')
-    price = float(data.get('price', 0))
-    supplier = data.get('supplier')
-    quantity = int(data.get('quantity', 1))
-    print(f"[DEBUG] Agregando al carrito: {product_name}, ${price}, {supplier}")  # Debug
-    if user not in user_carts:
-        user_carts[user] = []
-    # Verificar si ya existe el producto en el carrito
-    found = False
-    for item in user_carts[user]:
-        if item['id'] == product_id:
-            item['quantity'] += quantity
-            found = True
-            break
-    
-    if not found:
-        user_carts[user].append({
-            'id': product_id,
-            'product': product_name,
-            'price': price,
-            'supplier': supplier,
-            'quantity': quantity
+    try:
+        user = session.get('user')
+        print(f"🔵 [DEBUG ADD] Usuario: '{user}' (tipo: {type(user)})")
+        print(f"🔵 [DEBUG ADD] Session completa: {dict(session)}")
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Datos inválidos'}), 400
+        
+        # Validar datos requeridos
+        required_fields = ['product_id', 'product_name', 'price', 'supplier']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'Campo {field} requerido'}), 400
+        
+        product_id = str(data.get('product_id')).strip()
+        product_name = str(data.get('product_name')).strip()
+        supplier = str(data.get('supplier')).strip()
+        
+        try:
+            price = float(data.get('price', 0))
+            quantity = int(data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Precio o cantidad inválidos'}), 400
+        
+        if price <= 0 or quantity <= 0:
+            return jsonify({'success': False, 'error': 'Precio y cantidad deben ser positivos'}), 400
+        
+        print(f"🔵 [DEBUG] Usuario: {user} - Agregando: {product_name}, ${price}, {supplier}")
+        
+        # Obtener carrito actual de forma thread-safe
+        cart = get_user_cart(user)
+        print(f"🔵 [DEBUG ADD] Carrito actual antes de modificar: {cart}")
+        
+        # Buscar producto existente (usar product_id Y supplier como clave única)
+        product_found = False
+        for item in cart:
+            if item['id'] == product_id and item['supplier'] == supplier:
+                item['quantity'] += quantity
+                product_found = True
+                print(f"🔵 [DEBUG] Producto existente actualizado. Nueva cantidad: {item['quantity']}")
+                break
+        
+        # Si no existe, agregarlo
+        if not product_found:
+            new_item = {
+                'id': product_id,
+                'product': product_name,
+                'price': price,
+                'supplier': supplier,
+                'quantity': quantity
+            }
+            cart.append(new_item)
+            print(f"🔵 [DEBUG] Nuevo producto agregado al carrito. Carrito ahora: {cart}")
+        
+        # ✅ LOGS CRÍTICOS AGREGADOS:
+        print(f"🔵 [DEBUG ADD] ANTES de guardar - user_carts keys: {list(user_carts.keys())}")
+        print(f"🔵 [DEBUG ADD] ANTES de guardar - carrito a guardar: {cart}")
+        
+        # Guardar carrito actualizado
+        set_user_cart(user, cart)
+        
+        # ✅ VERIFICACIÓN INMEDIATA después de guardar:
+        print(f"🔵 [DEBUG ADD] DESPUÉS de guardar - user_carts: {dict(user_carts)}")
+        verification_cart = get_user_cart(user)
+        print(f"🔵 [DEBUG ADD] VERIFICACIÓN inmediata - carrito recuperado: {verification_cart}")
+        
+        return jsonify({
+            'success': True,
+            'cart_count': len(cart),
+            'message': f'{product_name} agregado al carrito',
+            'total_items': sum(item['quantity'] for item in cart)
         })
-    return jsonify({
-        'success': True, 
-        'cart_count': len(user_carts[user]),
-                'message': f'{product_name} agregado al carrito'
-    })
+        
+    except Exception as e:
+        print(f"❌ [ERROR] Error en add_to_cart: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
 @app.route('/cart/get')
 @login_required
 def get_cart():
-    user = session['user']
-    cart = user_carts.get(user, [])
-    total = sum(item['price'] * item['quantity'] for item in cart)
-
-    # agrupar por proveedor
-    suppliers = {}
-    for item in cart:
-        suppliers.setdefault(item['supplier'], []).append(item)
-
-    return jsonify({
-        'cart': cart,
-        'total': total,
-        'total_formatted': f"${total:,.2f}",
-        'suppliers': suppliers
-    })
-
+    """Obtener carrito del usuario"""
+    try:
+        user = session.get('user')
+        print(f"🟡 [DEBUG GET] Usuario: '{user}' (tipo: {type(user)})")
+        print(f"🟡 [DEBUG GET] user_carts keys disponibles: {list(user_carts.keys())}")
+        print(f"🟡 [DEBUG GET] user_carts completo: {dict(user_carts)}")
+        
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+        
+        cart = get_user_cart(user)
+        print(f"🟡 [DEBUG GET] Carrito obtenido para '{user}': {cart}")
+        
+        total = sum(item['price'] * item['quantity'] for item in cart)
+        
+        # Agrupar por proveedor
+        suppliers = defaultdict(list)
+        for item in cart:
+            suppliers[item['supplier']].append(item)
+        
+        result = {
+            'success': True,
+            'cart': cart,
+            'total': total,
+            'total_formatted': f"${total:,.2f}",
+            'suppliers': dict(suppliers),
+            'items_count': len(cart),
+            'total_quantity': sum(item['quantity'] for item in cart)
+        }
+        
+        print(f"🟡 [DEBUG GET] Respuesta a enviar: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ [ERROR] Error en get_cart: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
 @app.route('/cart/update', methods=['POST'])
 @login_required
 def update_cart():
-    user = session['user']
-    data = request.get_json()
-    product_id = data.get('product_id')
-    quantity = int(data.get('quantity', 1))
-
-    cart = user_carts.get(user, [])
-    for item in cart:
-        if item['id'] == product_id:
-            if quantity <= 0:
-                cart.remove(item)
-            else:
-                item['quantity'] = quantity
-            return jsonify({'success': True})
-    return jsonify({'error': 'Producto no encontrado en el carrito'}), 404
-
+    """Actualizar cantidad de producto en carrito"""
+    try:
+        user = session.get('user')
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Datos inválidos'}), 400
+        
+        product_id = str(data.get('product_id', '')).strip()
+        supplier = str(data.get('supplier', '')).strip()  # Agregar supplier para identificación única
+        
+        try:
+            quantity = int(data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Cantidad inválida'}), 400
+        
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID de producto requerido'}), 400
+        
+        cart = get_user_cart(user)
+        
+        # Buscar producto por ID y supplier
+        for i, item in enumerate(cart):
+            if item['id'] == product_id and (not supplier or item['supplier'] == supplier):
+                if quantity <= 0:
+                    cart.pop(i)
+                    print(f"[DEBUG] Producto {product_id} eliminado del carrito")
+                else:
+                    item['quantity'] = quantity
+                    print(f"[DEBUG] Producto {product_id} actualizado a cantidad: {quantity}")
+                
+                set_user_cart(user, cart)
+                return jsonify({
+                    'success': True,
+                    'cart_count': len(cart),
+                    'total_quantity': sum(item['quantity'] for item in cart)
+                })
+        
+        return jsonify({'success': False, 'error': 'Producto no encontrado en el carrito'}), 404
+        
+    except Exception as e:
+        print(f"[ERROR] Error en update_cart: {e}")
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
 @app.route('/cart/remove', methods=['POST'])
 @login_required
 def remove_from_cart():
-    user = session['user']
-    data = request.get_json()
-    product_id = data.get('product_id')
-
-    cart = user_carts.get(user, [])
-    for item in cart:
-        if item['id'] == product_id:
-            cart.remove(item)
-            return jsonify({'success': True})
-    return jsonify({'error': 'Producto no encontrado en el carrito'}), 404
-
+    """Eliminar producto del carrito"""
+    try:
+        user = session.get('user')
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Datos inválidos'}), 400
+        
+        product_id = str(data.get('product_id', '')).strip()
+        supplier = str(data.get('supplier', '')).strip()
+        
+        if not product_id:
+            return jsonify({'success': False, 'error': 'ID de producto requerido'}), 400
+        
+        cart = get_user_cart(user)
+        
+        # Buscar y eliminar producto
+        for i, item in enumerate(cart):
+            if item['id'] == product_id and (not supplier or item['supplier'] == supplier):
+                removed_item = cart.pop(i)
+                set_user_cart(user, cart)
+                print(f"[DEBUG] Producto {removed_item['product']} eliminado del carrito")
+                return jsonify({
+                    'success': True,
+                    'message': f"{removed_item['product']} eliminado del carrito",
+                    'cart_count': len(cart)
+                })
+        
+        return jsonify({'success': False, 'error': 'Producto no encontrado en el carrito'}), 404
+        
+    except Exception as e:
+        print(f"[ERROR] Error en remove_from_cart: {e}")
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
 @app.route('/cart/clear')
 @login_required
 def clear_cart():
-    user = session['user']
-    user_carts[user] = []
-    return jsonify({'success': True, 'message': 'Carrito limpiado'})
+    """Limpiar carrito completo"""
+    try:
+        user = session.get('user')
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+        
+        set_user_cart(user, [])
+        print(f"[DEBUG] Carrito limpiado para usuario: {user}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Carrito limpiado',
+            'cart_count': 0
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Error en clear_cart: {e}")
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
+@app.route('/cart/generate_pdfs', methods=['POST'])
+@login_required
+def generate_pdfs():
+    """Generar PDFs por proveedor"""
+    try:
+        user = session.get('user')
+        if not user:
+            return jsonify({'success': False, 'error': 'Usuario no autenticado'}), 401
+        
+        # Obtener datos del negocio desde la BD
+        business_data_from_db = get_user_business_data(user)
+        
+        # Verificar datos del negocio
+        if not business_data_from_db or not all([
+            business_data_from_db.get('business_name', '').strip(),
+            business_data_from_db.get('address', '').strip(),
+            business_data_from_db.get('phone', '').strip()
+        ]):
+            return jsonify({
+                'success': False,
+                'error': 'Datos del negocio requeridos',
+                'show_business_form': True,
+                'message': 'Primero complete la información de su comercio'
+            }), 400
+        
+        cart = get_user_cart(user)
+        if not cart:
+            return jsonify({'success': False, 'error': 'Carrito vacío'}), 400
+        
+        # Agrupar productos por proveedor
+        suppliers = defaultdict(list)
+        for item in cart:
+            suppliers[item['supplier']].append(item)
+        
+        # Generar PDFs
+        generated_pdfs = []
+        whatsapp_links = []
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_user = user.replace(' ', '_').replace('/', '_')
+        
+        for supplier, items in suppliers.items():
+            safe_supplier = supplier.replace(' ', '_').replace('/', '_')
+            filename = f"pedido_{safe_supplier}_{safe_user}_{timestamp}.pdf"
+            
+            try:
+                pdf_path = generate_pdf_for_supplier(supplier, items, business_data_from_db, filename)
+                total_supplier = sum(item['quantity'] * item['price'] for item in items)
+                
+                generated_pdfs.append({
+                    'supplier': supplier,
+                    'filename': filename,
+                    'path': pdf_path,
+                    'items_count': len(items),
+                    'total': total_supplier,
+                    'total_formatted': f"${total_supplier:,.2f}"
+                })
+                
+                # Crear mensaje de WhatsApp
+                whatsapp_message = create_whatsapp_message(supplier, items, business_data_from_db, total_supplier)
+                phone = get_supplier_phone(supplier)
+                phone_clean = _normalize_phone(phone)
+                
+                if phone_clean:
+                    wa_url = f"https://wa.me/{phone_clean}?text={urllib.parse.quote(whatsapp_message)}"
+                else:
+                    wa_url = f"https://wa.me/?text={urllib.parse.quote(whatsapp_message)}"
+                
+                whatsapp_links.append({
+                    'supplier': supplier,
+                    'url': wa_url
+                })
+                
+            except Exception as e:
+                print(f"[ERROR] Error generando PDF para {supplier}: {e}")
+                continue
+        
+        if not generated_pdfs:
+            return jsonify({
+                'success': False,
+                'error': 'No se pudieron generar los PDFs'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(generated_pdfs)} PDF(s) generado(s) exitosamente',
+            'pdfs': generated_pdfs,
+            'whatsapp_links': whatsapp_links,
+            'total_suppliers': len(suppliers)
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Error en generate_pdfs: {e}")
+        return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
 
 @app.route("/business/save", methods=["POST"])
@@ -673,7 +1862,7 @@ def save_business():
     current_role = session.get("role")
 
     if not current_user:
-        return jsonify({"success": False, "error": "Usuario no autenticado. Por favor, inicia sesión."})
+        return jsonify({"success": False, "error": "Usuario no autenticado. Por favor, inicia sesion."})
 
     if not data:
         return jsonify({"success": False, "error": "No se recibieron datos"})
@@ -682,12 +1871,12 @@ def save_business():
     cursor = None
     try:
         print("🔌 Intentando conectar a BD...")
-        conn = get_connection()                      # 👉 conexión NUEVA por request
+        conn = get_connection()                      # 👉 conexion NUEVA por request
         conn.autocommit = False                      # manejamos nosotros el commit
 
         # 👉 usar cursor buffered para evitar resultados pendientes
         cursor = conn.cursor(buffered=True, dictionary=True)
-        print("✅ Conexión exitosa")
+        print("✅ Conexion exitosa")
 
         # 1) Verificar usuario (y CONSUMIR resultados)
         cursor.execute("SELECT username FROM usuarios WHERE username = %s", (current_user,))
@@ -765,7 +1954,7 @@ def business_info_route():
             'phone': data.get('phone', ''),
             'email': data.get('email', '')
         }
-        return jsonify({'success': True, 'message': 'Información guardada'})
+        return jsonify({'success': True, 'message': 'Informacion guardada'})
     return jsonify(business_data.get(user, {}))
 
 
@@ -796,7 +1985,7 @@ def remove_list(supplier):
         cur.execute("DELETE FROM productos WHERE proveedor = %s", (supplier,))
         deleted_prod = cur.rowcount
 
-        # 1.b) si no borró nada, intentá con normalización (espacios/case)
+        # 1.b) si no borro nada, intenta con normalizacion (espacios/case)
         if deleted_prod == 0:
             cur.execute("""
                 DELETE FROM productos 
@@ -804,7 +1993,7 @@ def remove_list(supplier):
             """, (supplier,))
             deleted_prod = cur.rowcount
 
-        # 2) borrar ficha del proveedor (opcional; descomentalo si querés)  
+        # 2) borrar ficha del proveedor (opcional; descomentalo si queres)  
         cur.execute("DELETE FROM proveedores_config WHERE proveedor = %s", (supplier,))
         deleted_cfg = cur.rowcount
         if deleted_cfg == 0:
@@ -813,7 +2002,7 @@ def remove_list(supplier):
                  WHERE LOWER(TRIM(proveedor)) = LOWER(TRIM(%s))
              """, (supplier,))
              deleted_cfg = cur.rowcount
-        deleted_cfg = 0  # si lo dejás comentado arriba
+        deleted_cfg = 0  # si lo dejas comentado arriba
 
         conn.commit()
     except Exception as e:
@@ -838,13 +2027,12 @@ def remove_list(supplier):
     else:
         return jsonify({'success': False, 'message': 'Lista no encontrada'})
 
-
 @app.route('/ai/suggest')
 def ai_suggest():
     """Endpoint preparado para sugerencias de IA"""
     query = request.args.get('q', '')
     
-    # Por ahora retorna sugerencias básicas
+    # Por ahora retorna sugerencias basicas
     suggestions = []
     
     if price_lists and query:
@@ -865,7 +2053,7 @@ def ai_suggest():
 
 @app.route('/debug_file/<supplier>')
 def debug_file_info(supplier):
-    """Obtener información de debug detallada de un archivo específico"""
+    """Obtener informacion de debug detallada de un archivo especifico"""
     if supplier in price_lists:
         return jsonify({
             'supplier': supplier,
@@ -910,17 +2098,16 @@ def cleanup_temp_files():
     
 def get_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="u850798149_root",
-        password="12345678",
-        database="u850798149_login_db",
-        autocommit=False,
-        consume_results=True   # 👈 evita "Unread result found"
+        host="31.97.151.160",
+        user="miusuario",
+        password="M1password!",
+        port=3306,
+        database="sys",
+        autocommit=False
     )
 
-
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
-    """Crea o actualiza un proveedor con su dirección, teléfono y email."""
+    """Crea o actualiza un proveedor con su direccion, telefono y email."""
     if not nombre:
         return
     conn = get_connection()
@@ -939,7 +2126,7 @@ def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, e
         conn.close()
 
 def get_proveedor_info(nombre: str) -> dict:
-    """Devuelve {'proveedor','direccion','telefono','email'} para el proveedor o valores vacíos si no existe."""
+    """Devuelve {'proveedor','direccion','telefono','email'} para el proveedor o valores vacios si no existe."""
     conn = get_connection()
     try:
         cur = conn.cursor(dictionary=True)
@@ -948,7 +2135,7 @@ def get_proveedor_info(nombre: str) -> dict:
         if not row:
             return {'proveedor': nombre, 'direccion': '', 'telefono': '', 'email': ''}
         
-        # Convertir None a string vacío
+        # Convertir None a string vacio
         return {
             'proveedor': row.get('proveedor') or nombre,
             'direccion': row.get('direccion') or '',
@@ -960,8 +2147,8 @@ def get_proveedor_info(nombre: str) -> dict:
 
 def get_supplier_phone(nombre: str) -> str:
     """
-    Devuelve el teléfono del proveedor priorizando la BD (proveedores_config).
-    Si no existe o está vacío, usa el respaldo SUPPLIER_PHONES.
+    Devuelve el telefono del proveedor priorizando la BD (proveedores_config).
+    Si no existe o esta vacio, usa el respaldo SUPPLIER_PHONES.
     """
     try:
         prov = get_proveedor_info(nombre) or {}
@@ -972,8 +2159,6 @@ def get_supplier_phone(nombre: str) -> str:
         pass
     return (SUPPLIER_PHONES.get(nombre, '') or '').strip()
 
-        
-
 import re
 from datetime import datetime
 
@@ -982,7 +2167,8 @@ def normalizar_texto(s: str) -> str:
 
 def guardar_productos_en_bd(proveedor: str, productos: list[dict]):
     """
-    Sobrescribe todos los productos de 'proveedor' con los nuevos.
+    - Si el producto YA EXISTE del MISMO proveedor: lo SOBREESCRIBE (actualiza)
+    - Si el producto es de OTRO proveedor: crea una NUEVA FILA con nuevo ID
     productos: [{'product': str, 'price': float, ...}, ...]
     """
     conn = get_connection()
@@ -990,33 +2176,52 @@ def guardar_productos_en_bd(proveedor: str, productos: list[dict]):
         conn.start_transaction()
         cur = conn.cursor()
 
-        # 1) borrar lo anterior de ese proveedor
-        cur.execute("DELETE FROM productos WHERE proveedor=%s", (proveedor,))
+        # 1) Borrar productos anteriores de este proveedor
+        cur.execute("DELETE FROM productos WHERE proveedor = %s", (proveedor,))
+        productos_eliminados = cur.rowcount
 
-        # 2) insertar los nuevos
+        # 2) Insertar/actualizar productos
         filas = []
+        productos_procesados = 0
+        
         for p in productos:
-            prod = str(p['product']).strip()
-            precio = float(p['price'])
-            filas.append((
-                proveedor,
-                prod,
-                normalizar_texto(prod),
-                precio
-            ))
+            try:
+                prod = str(p['product']).strip()
+                precio = float(p['price'])
+                
+                if not prod:
+                    continue
+                    
+                filas.append((
+                    proveedor,
+                    prod,
+                    normalizar_texto(prod),
+                    precio
+                ))
+                productos_procesados += 1
+                
+            except (ValueError, KeyError) as e:
+                print(f"[WARNING] Error procesando producto {p}: {e}")
+                continue
 
+        # Usar UPSERT para manejar duplicados
         if filas:
             cur.executemany(
                 """INSERT INTO productos (proveedor, producto, producto_normalizado, precio, actualizado_a)
-                   VALUES (%s, %s, %s, %s, NOW())""",
+                   VALUES (%s, %s, %s, %s, NOW())
+                   ON DUPLICATE KEY UPDATE
+                   producto_normalizado = VALUES(producto_normalizado),
+                   precio = VALUES(precio),
+                   actualizado_a = NOW()""",
                 filas
             )
 
         conn.commit()
-        print(f"[DB] {len(filas)} productos guardados para {proveedor}")
+        print(f"[DB] {proveedor}: {productos_eliminados} eliminados, {len(filas)} productos procesados (insertados/actualizados)")
+        
     except Exception as e:
         conn.rollback()
-        print("[DB ERROR] guardar_productos_en_bd:", e)
+        print(f"[DB ERROR] guardar_productos_en_bd para {proveedor}: {e}")
         raise
     finally:
         conn.close()
@@ -1107,7 +2312,7 @@ def index_pagina():
 
 @app.errorhandler(404)
 def _404_to_login(e):
-    # no interceptes estáticos ni el propio /login
+    # no interceptes estaticos ni el propio /login
     if request.path.startswith("/static/") or request.path == "/login":
         return e, 404
     return redirect(url_for("login"))
@@ -1115,8 +2320,8 @@ def _404_to_login(e):
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.pop("user", None)              # borra la sesión
-    flash("Sesión cerrada", "info")        # opcional: mensaje
+    session.pop("user", None)              # borra la sesion
+    flash("Sesion cerrada", "info")        # opcional: mensaje
     return redirect(url_for("login"))      # redirige al login
 
 
@@ -1141,7 +2346,7 @@ def check_business_data():
 @app.route('/business/setup', methods=['GET', 'POST'])
 @login_required
 def business_setup():
-    """Modal/página para configurar datos del negocio antes de generar PDFs"""
+    """Modal/pagina para configurar datos del negocio antes de generar PDFs"""
     user = session['user']
     if request.method == 'POST':
         data = request.get_json()
@@ -1159,7 +2364,7 @@ def business_setup():
 def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     """
     Genera el PDF del pedido para un proveedor.
-    - supplier_name: str (nombre EXACTO del proveedor como está en la BD)
+    - supplier_name: str (nombre EXACTO del proveedor como esta en la BD)
     - items: lista de dicts con keys: product, quantity, price
     - business_data: dict con keys: business_name, contact_person, address, phone, email
     - filename: nombre de archivo de salida (str)
@@ -1170,8 +2375,8 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     print(f"Debug - Datos obtenidos: {prov}")
     print(f"Debug - Tipo direccion: {type(prov.get('direccion'))}, valor: '{prov.get('direccion')}'")
     print(f"Debug - Tipo telefono: {type(prov.get('telefono'))}, valor: '{prov.get('telefono')}'")
-    supplier_address = (prov.get('direccion') or '').strip() or 'Ubicación no especificada'
-    supplier_phone   = (prov.get('telefono')  or '').strip() or 'Teléfono no disponible'
+    supplier_address = (prov.get('direccion') or '').strip() or 'Ubicacion no especificada'
+    supplier_phone   = (prov.get('telefono')  or '').strip() or 'Telefono no disponible'
 
     pdf_path = os.path.join(app.config['PDFS_FOLDER'], filename)
     doc = SimpleDocTemplate(pdf_path, pagesize=letter, topMargin=50, bottomMargin=50)
@@ -1207,8 +2412,8 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     business_info_text = f"""
     <b>Comercio:</b> {business_data.get('business_name', 'N/A')}<br/>
     <b>Persona de Contacto:</b> {business_data.get('contact_person', 'N/A')}<br/>
-    <b>Dirección de Entrega:</b> {business_data.get('address', 'N/A')}<br/>
-    <b>Teléfono:</b> {business_data.get('phone', 'N/A')}<br/>
+    <b>Direccion de Entrega:</b> {business_data.get('address', 'N/A')}<br/>
+    <b>Telefono:</b> {business_data.get('phone', 'N/A')}<br/>
     <b>Email:</b> {business_data.get('email', 'N/A')}<br/>
     """
     story.append(Paragraph(business_info_text, styles['Normal']))
@@ -1216,7 +2421,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
 
     # ---- Fecha y Nº de pedido
     story.append(Paragraph(f"<b>Fecha del Pedido:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
-    story.append(Paragraph(f"<b>Número de Pedido:</b> {datetime.now().strftime('%Y%m%d%H%M%S')}", styles['Normal']))
+    story.append(Paragraph(f"<b>Numero de Pedido:</b> {datetime.now().strftime('%Y%m%d%H%M%S')}", styles['Normal']))
     story.append(Spacer(1, 25))
 
     # ---- Detalle de productos
@@ -1272,8 +2477,8 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     story.append(Paragraph("DATOS DEL PROVEEDOR", header_style))
     supplier_info_text = f"""
     <b>Proveedor:</b> {supplier_name}<br/>
-    <b>Dirección:</b> {supplier_address}<br/>
-    <b>Teléfono:</b> {supplier_phone}<br/>
+    <b>Direccion:</b> {supplier_address}<br/>
+    <b>Telefono:</b> {supplier_phone}<br/>
 
     """
     story.append(Paragraph(supplier_info_text, styles['Normal']))
@@ -1285,7 +2490,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     • Por favor confirme disponibilidad de todos los productos<br/>
     • Solicite tiempo estimado de entrega<br/>
     • Verifique condiciones de pago<br/>
-    • Este pedido está sujeto a confirmación
+    • Este pedido esta sujeto a confirmacion
     """
     story.append(Paragraph(notes_text, styles['Normal']))
 
@@ -1346,13 +2551,13 @@ def create_whatsapp_message(supplier_name, items, business_data, total):
  *De:* {contact_person}
  *Comercio:* {business_data.get('business_name', 'N/A')}
 - *Datos de Entrega:*
--  Dirección: {business_data.get('address', 'N/A')}
-- Teléfono: {business_data.get('phone', 'N/A')}
+-  Direccion: {business_data.get('address', 'N/A')}
+- Telefono: {business_data.get('phone', 'N/A')}
 - Email: {business_data.get('email', 'N/A')}
 
  *Proveedor:* {supplier_name}
-- Dirección: {prov_dir or 'N/D'}
-- Teléfono: {prov_tel or 'N/D'}
+- Direccion: {prov_dir or 'N/D'}
+- Telefono: {prov_tel or 'N/D'}
 
 *Productos Solicitados:*
 """
@@ -1374,111 +2579,16 @@ def create_whatsapp_message(supplier_name, items, business_data, total):
     message += "- Disponibilidad de productos\n"
     message += "- Tiempo de entrega\n"
     message += "- Condiciones de pago\n"
-    message += "- Cualquier modificación necesaria\n\n"
+    message += "- Cualquier modificacion necesaria\n\n"
     
-    message += "¡Gracias por su atención! "
+    message += "¡Gracias por su atencion! "
     
     return message
 
 def _normalize_phone(raw_phone: str) -> str:
-    """Deja solo dígitos para wa.me."""
+    """Deja solo digitos para wa.me."""
     return re.sub(r'\D+', '', raw_phone or '')
 
-@app.route('/cart/generate_pdfs', methods=['POST'])
-@login_required
-def generate_pdfs():
-    user = session['user']
-    
-    # Obtener datos del negocio desde la BD (no desde variable temporal)
-    business_data_from_db = get_user_business_data(user)
-    
-    # Verificar que hay datos del negocio completos en la BD
-    if not business_data_from_db or not all([
-        business_data_from_db.get('business_name', '').strip(),
-        business_data_from_db.get('address', '').strip(),
-        business_data_from_db.get('phone', '').strip()
-    ]):
-        return jsonify({
-            'success': False,
-            'error': 'Datos del negocio requeridos',
-            'show_business_form': True,
-            'message': 'Primero complete la información de su comercio'
-        }), 400
-    
-    if user not in user_carts or not user_carts[user]:
-        return jsonify({'success': False, 'error': 'Carrito vacío'}), 400
-
-    cart = user_carts[user]
-    
-    # Agrupar productos por proveedor
-    suppliers = {}
-    for item in cart:
-        supplier = item['supplier']
-        if supplier not in suppliers:
-            suppliers[supplier] = []
-        suppliers[supplier].append(item)
-    
-    # Generar un PDF por cada proveedor
-    generated_pdfs = []
-    whatsapp_links = []
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_user = user.replace(' ', '_').replace('/', '_')
-    
-    for supplier, items in suppliers.items():
-        safe_supplier = supplier.replace(' ', '_').replace('/', '_')
-        filename = f"pedido_{safe_supplier}_{safe_user}_{timestamp}.pdf"
-        
-        try:
-            # Usar datos de la BD en lugar de variable temporal
-            pdf_path = generate_pdf_for_supplier(supplier, items, business_data_from_db, filename)
-            
-            total_supplier = sum(item['quantity'] * item['price'] for item in items)
-            
-            generated_pdfs.append({
-                'supplier': supplier,
-                'filename': filename,
-                'path': pdf_path,
-                'items_count': len(items),
-                'total': total_supplier,
-                'total_formatted': f"${total_supplier:,.2f}"
-            })
-            
-            # Crear mensaje de WhatsApp
-            whatsapp_message = create_whatsapp_message(supplier, items, business_data_from_db, total_supplier)
-
-            # Teléfono del proveedor: BD -> fallback a SUPPLIER_PHONES
-            phone = get_supplier_phone(supplier)
-            phone_clean = _normalize_phone(phone)
-
-            # Armar URL wa.me con o sin número
-            if phone_clean:
-                wa_url = f"https://wa.me/{phone_clean}?text={urllib.parse.quote(whatsapp_message)}"
-            else:
-                wa_url = f"https://wa.me/?text={urllib.parse.quote(whatsapp_message)}"
-            
-            whatsapp_links.append({
-                'supplier': supplier,
-                'url': wa_url
-            })
-            
-        except Exception as e:
-            print(f"Error generando PDF para {supplier}: {e}")
-            continue
-    
-    if not generated_pdfs:
-        return jsonify({
-            'success': False,
-            'error': 'No se pudieron generar los PDFs'
-        }), 500
-    
-    return jsonify({
-        'success': True,
-        'message': f'{len(generated_pdfs)} PDF(s) generado(s) exitosamente',
-        'pdfs': generated_pdfs,
-        'whatsapp_links': whatsapp_links,
-        'total_suppliers': len(suppliers)
-    })
 
 
 def get_user_business_data(username):
@@ -1525,9 +2635,9 @@ def validate_business_data():
     if not data.get('business_name', '').strip():
         errors.append('Nombre del comercio es obligatorio')
     if not data.get('address', '').strip():
-        errors.append('Dirección es obligatoria')
+        errors.append('Direccion es obligatoria')
     if not data.get('phone', '').strip():
-        errors.append('Teléfono es obligatorio')
+        errors.append('Telefono es obligatorio')
     
     if errors:
         return jsonify({

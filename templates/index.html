@@ -1,936 +1,803 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comparador de Precios - Mayoristas</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-            position: relative;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-
-        .ai-badge {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: #28a745;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 0;
-            min-height: 70vh;
-        }
-
-        .left-panel {
-            padding: 30px;
-        }
-
-        .sidebar {
-            background: #f8f9fa;
-            border-left: 1px solid #e9ecef;
-            padding: 30px 25px;
-        }
-
-        .upload-section {
-            margin-bottom: 30px;
-        }
-
-        .section-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .upload-form {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            border: 3px dashed #007bff;
-            transition: all 0.3s ease;
-        }
-
-        .upload-form:hover {
-            border-color: #28a745;
-            background: #f0fff4;
-            transform: translateY(-2px);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 15px 20px;
-            font-size: 1rem;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            outline: none;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .form-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-            transform: translateY(-1px);
-        }
-
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .file-input {
-            position: absolute;
-            left: -9999px;
-        }
-
-        .file-input-button {
-            width: 100%;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .file-input-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-        }
-
-        .submit-btn {
-            width: 100%;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3);
-        }
-
-        .search-container {
-            position: relative;
-            margin-bottom: 30px;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 15px 50px 15px 20px;
-            font-size: 1.1rem;
-            border: 2px solid #e9ecef;
-            border-radius: 50px;
-            outline: none;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .search-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-        }
-
-        .search-controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .search-btn {
-            flex: 1;
-            padding: 12px 20px;
-            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .search-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
-        }
-
-        .clear-btn {
-            flex: 1;
-            padding: 12px 20px;
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .clear-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-        }
-
-        .results-section {
-            min-height: 400px;
-        }
-
-        .results-info {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #e3f2fd;
-            border-radius: 10px;
-            color: #1565c0;
-            font-weight: 500;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .results-table th {
-            background: linear-gradient(135deg, #495057 0%, #6c757d 100%);
-            color: white;
-            padding: 15px 12px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .results-table td {
-            padding: 12px;
-            border-bottom: 1px solid #f0f0f0;
-            vertical-align: middle;
-        }
-
-        .results-table tr:hover {
-            background: #f8f9fa;
-            transform: translateX(2px);
-            transition: all 0.2s ease;
-        }
-
-        .results-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .product-name-cell {
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: #2c3e50;
-            line-height: 1.3;
-        }
-
-        .price-cell {
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: #28a745;
-            white-space: nowrap;
-        }
-
-        .supplier-cell {
-            font-weight: 600;
-            color: #007bff;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-            font-size: 1.1rem;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #007bff;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #007bff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Sidebar styles */
-        .loaded-lists {
-            margin-bottom: 30px;
-        }
-
-        .list-item {
-            background: white;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
-            position: relative;
-            transition: all 0.3s ease;
-        }
-
-        .list-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .list-name {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 5px;
-        }
-
-        .list-info {
-            font-size: 0.85rem;
-            color: #6c757d;
-        }
-
-        .remove-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 15px;
-            width: 24px;
-            height: 24px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
-        }
-
-        .remove-btn:hover {
-            background: #c82333;
-            transform: scale(1.1);
-        }
-
-        .stats-section {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
-        }
-
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding: 5px 0;
-        }
-
-        .stat-label {
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-
-        .stat-value {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        /* Status messages */
-        .status-message {
-            padding: 15px;
-            border-radius: 10px;
-            margin: 15px 0;
-            font-weight: 500;
-        }
-
-        .status-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .status-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .debug-info {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 10px 0;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            color: #495057;
-        }
-
-        @media (max-width: 1024px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .sidebar {
-                border-left: none;
-                border-top: 1px solid #e9ecef;
-            }
-        }
-
-                    @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .search-controls {
-                flex-direction: column;
-            }
-
-            .results-table {
-                font-size: 0.85rem;
-            }
-            
-            .results-table th,
-            .results-table td {
-                padding: 8px 6px;
-            }
-
-            .results-table th {
-                font-size: 0.8rem;
-            }
-
-            .product-name-cell {
-                font-size: 0.85rem;
-            }
-
-            .price-cell {
-                font-size: 1rem;
-            }
-
-            .supplier-cell {
-                font-size: 0.75rem;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Comparador de Precios - Mayoristas</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --primary:#007bff;--primary-dark:#0056b3;--success:#28a745;--danger:#dc3545;
+      --bg-grad:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    }
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg-grad);min-height:100vh;padding:16px}
+    .container{max-width:1200px;margin:0 auto;background:rgba(255,255,255,.96);border-radius:20px;box-shadow:0 20px 40px rgba(0,0,0,.1);overflow:hidden}
+    .header{background:linear-gradient(135deg,#2c3e50 0%,#34495e 100%);color:#fff;padding:28px 20px;text-align:center;position:relative}
+    .header h1{font-size:clamp(1.6rem,3.5vw,2.5rem);font-weight:700;margin-bottom:8px}
+    .header p{opacity:.9;font-size:clamp(.95rem,2.2vw,1.1rem)}
+    .ai-badge{position:absolute;top:16px;right:16px;background:#28a745;color:#fff;padding:8px 14px;border-radius:20px;font-size:.8rem;font-weight:700;text-transform:uppercase}
+
+    .main-content{display:grid;grid-template-columns:1fr 340px;min-height:70vh}
+    .left-panel{padding:24px}
+    .sidebar{background:#f8f9fa;border-left:1px solid #e9ecef;padding:24px}
+
+    .section-title{font-size:1.15rem;font-weight:700;color:#2c3e50;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+    .upload-form{background:#fff;padding:20px;border-radius:15px;border:3px dashed var(--primary);transition:.25s}
+    .upload-form:hover{border-color:var(--success);background:#f4fff6;transform:translateY(-1px)}
+    .form-group{margin-bottom:16px}
+    .form-label{display:block;margin-bottom:6px;font-weight:600;color:#495057}
+    .form-input{width:100%;padding:14px 16px;font-size:1rem;border:2px solid #e9ecef;border-radius:10px;outline:0;transition:.2s;background:#fff}
+    .form-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,123,255,.12)}
+
+    .file-input{position:absolute;left:-9999px}
+    .file-input-button,.submit-btn{
+      width:100%;min-height:44px;padding:14px 16px;border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:.2s
+    }
+    .file-input-button{background:linear-gradient(135deg,#28a745 0%,#20c997 100%)}
+    .file-input-button:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(40,167,69,.28)}
+    .submit-btn{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%)}
+    .submit-btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(0,123,255,.28)}
+
+    .search-container{position:relative;margin-bottom:16px}
+    .search-input{width:100%;padding:14px 18px;font-size:1.05rem;border:2px solid #e9ecef;border-radius:999px;background:#fff;outline:0;transition:.2s}
+    .search-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,123,255,.12)}
+    .search-controls{display:flex;gap:10px;margin-top:12px}
+    .search-btn,.clear-btn{
+      flex:1;min-height:44px;border:none;border-radius:999px;color:#fff;font-weight:700;cursor:pointer;transition:.2s
+    }
+    .search-btn{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 100%)}
+    .clear-btn{background:linear-gradient(135deg,#dc3545 0%,#c82333 100%)}
+    
+    /* === RESULTADOS CON SCROLL HORIZONTAL === */
+    .results-section{
+      min-height:360px;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-gutter:stable;
+    }
+    
+    .results-info{margin:16px 0;padding:12px;border-radius:10px;background:#e3f2fd;color:#1565c0;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+
+    .results-table{
+      width:100%;
+      min-width:780px;
+      border-collapse:collapse;
+      background:#fff;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 5px 15px rgba(0,0,0,.08);
+    }
+    .results-table th{background:linear-gradient(135deg,#495057 0%,#6c757d 100%);color:#fff;padding:14px 10px;text-align:left;font-size:.85rem;letter-spacing:.5px;text-transform:uppercase}
+    .results-table td{padding:12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+    .results-table tr:last-child td{border-bottom:none}
+    .results-table tr:hover{background:#f8f9fa;transition:.15s}
+
+    .product-name-cell{font-weight:700;color:#2c3e50}
+    .price-cell{font-weight:800;font-size:1.05rem;color:#28a745;white-space:nowrap}
+    .supplier-cell{font-weight:700;color:#007bff;font-size:.85rem;letter-spacing:.3px;text-transform:uppercase}
+
+    .list-item{background:#fff;padding:14px;border-radius:10px;border:1px solid #e9ecef;position:relative;margin-bottom:10px;transition:.2s}
+    .list-item:hover{transform:translateX(4px);box-shadow:0 6px 14px rgba(0,0,0,.08)}
+    .remove-btn{position:absolute;top:10px;right:10px;background:#dc3545;color:#fff;border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+
+    .stats-section{background:#fff;padding:18px;border-radius:10px;border:1px solid #e9ecef}
+    .stat-item{display:flex;justify-content:space-between;padding:6px 0}
+    .stat-label{color:#6c757d}
+    .stat-value{font-weight:700;color:#2c3e50}
+
+    .status-message{padding:14px;border-radius:10px;margin:12px 0;font-weight:600}
+    .status-success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+    .status-error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+    .status-info{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
+    .debug-info{background:#f8f9fa;border:1px solid #e9ecef;border-radius:10px;padding:12px;margin:10px 0;font-family:'Courier New',monospace;font-size:.85rem;color:#495057}
+
+    /* Logout fijo */
+    .logout-wrap{position:fixed;top:16px;left:16px;z-index:1000}
+    .logout-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.55rem .9rem;border-radius:9999px;border:1px solid #1c2947;background:#0f172a;color:#e8edf7;cursor:pointer;min-height:40px;text-decoration:none;font-size:.9rem}
+
+    /* === RESPONSIVE DESIGN === */
+    @media (max-width: 768px) {
+      body{padding:8px}
+      
+      .container{border-radius:10px}
+      
+      .header{padding:20px 16px}
+      .header h1{font-size:1.5rem}
+      
+      .ai-badge{position:static;display:inline-block;margin-bottom:10px;font-size:.7rem;padding:6px 10px}
+      
+      .main-content{
+        grid-template-columns:1fr;
+        min-height:auto;
+      }
+      
+      .left-panel{padding:16px}
+      .sidebar{
+        border-left:none;
+        border-top:1px solid #e9ecef;
+        padding:16px;
+      }
+      
+      .upload-form{padding:16px}
+      .form-input{padding:12px 14px;font-size:.95rem}
+      
+      .search-controls{flex-direction:column}
+      .search-btn,.clear-btn{flex:none;margin-bottom:8px}
+      
+      .results-section{
+        margin-top:16px;
+        padding-bottom:10px;
+      }
+      
+      .results-table{
+        min-width:600px;
+        font-size:.9rem;
+      }
+      .results-table th{padding:10px 8px;font-size:.75rem}
+      .results-table td{padding:10px 8px}
+      
+      .logout-wrap{position:fixed;top:8px;left:8px}
+      .logout-btn{padding:.4rem .7rem;min-height:36px;font-size:.8rem}
+    }
+
+    @media (max-width: 480px) {
+      body{padding:4px}
+      
+      .header{padding:16px 12px}
+      .header h1{font-size:1.3rem}
+      .header p{font-size:.9rem}
+      
+      .left-panel,.sidebar{padding:12px}
+      
+      .upload-form{padding:12px}
+      .form-input{padding:10px 12px}
+      
+      .results-table{
+        min-width:500px;
+        font-size:.85rem;
+      }
+      .results-table th{padding:8px 6px;font-size:.7rem}
+      .results-table td{padding:8px 6px}
+      
+      .section-title{font-size:1rem}
+      
+      .logout-btn span:last-child{display:none}
+    }
+
+    /* Scroll horizontal personalizado */
+    .results-section::-webkit-scrollbar{
+      height:12px;
+    }
+    .results-section::-webkit-scrollbar-track{
+      background:#f1f1f1;
+      border-radius:6px;
+    }
+    .results-section::-webkit-scrollbar-thumb{
+      background:#c1c1c1;
+      border-radius:6px;
+    }
+    .results-section::-webkit-scrollbar-thumb:hover{
+      background:#a8a8a8;
+    }
+
+    /* Animación del spinner */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .spinner {
+      animation: spin 1s linear infinite;
+    }
+
+    /* Touch improvements para móviles */
+    @media (hover: none) and (pointer: coarse) {
+      .file-input-button:hover,
+      .submit-btn:hover,
+      .search-btn:hover,
+      .clear-btn:hover {
+        transform:none;
+        box-shadow:none;
+      }
+      
+      .upload-form:hover {
+        transform:none;
+      }
+      
+      .list-item:hover {
+        transform:none;
+      }
+    }
+
+    /* Barra horizontal visible (espejo) */
+    .xbar{
+      display:none;
+      height:12px;
+      overflow-x:auto;
+      overflow-y:hidden;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-gutter:stable both-edges;
+      background:#eef1f4;
+      border-radius:8px;
+      margin-top:6px;
+    }
+    .xbar::-webkit-scrollbar{ height:10px; }
+    .xbar::-webkit-scrollbar-track{ background:#eef1f4; border-radius:8px; }
+    .xbar::-webkit-scrollbar-thumb{ background:#c9d1d9; border-radius:8px; }
+    .xbar::-webkit-scrollbar-thumb:hover{ background:#b5bec7; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="ai-badge">🚚 DistriSulpi</div>
-            <h1>🛍️ Comparador de Precios</h1>
-            <p>Sistema inteligente para DistriSulpi</p>
-        </div>
-
-        <div class="main-content">
-            <div class="left-panel">
-                <!-- Sección de carga de archivos -->
-                <div class="upload-section">
-                    <h3 class="section-title">
-                        📁 Cargar Lista de Precios
-                    </h3>
-                    <form id="uploadForm" class="upload-form">
-                        <form id="uploadForm" class="upload-form">
-                        <div class="form-group">
-                            <label class="form-label" for="supplierName">Nombre del Proveedor</label>
-                            <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required>
-                        </div>
-
-                        <!-- NUEVO: Dirección -->
-                        <div class="form-group">
-                            <label class="form-label" for="supplierAddress">Dirección del Proveedor</label>
-                            <input type="text" id="supplierAddress" class="form-input" placeholder="Ej: Av. Corrientes 1234, CABA">
-                        </div>
-
-                        <!-- NUEVO: Teléfono -->
-                        <div class="form-group">
-                            <label class="form-label" for="supplierPhone">Teléfono del Proveedor</label>
-                            <input type="tel" id="supplierPhone" class="form-input" placeholder="Ej: +54 11 5555-5555">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="supplierEmail">Email</label>
-                            <input type="tel" id="supplierEmail" class="form-input" placeholder="Ej: ejemplo@gmail.com">
-                        </div>
-
-
-
-
-                        
-                        <div class="form-group">
-                            <label class="form-label">Archivo Excel</label>
-                            <div class="file-input-wrapper">
-                                <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" required>
-                                <button type="button" class="file-input-button" onclick="document.getElementById('fileInput').click()">
-                                    📊 Seleccionar Archivo
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <button type="submit" class="submit-btn">
-                            🚀 Cargar Lista
-                        </button>
-                    </form>
-                    <div id="uploadStatus"></div>
-                </div>
-
-                <!-- Sección de búsqueda -->
-                <div class="search-section">
-                    <h3 class="section-title">
-                        🔍 Buscar Productos
-                    </h3>
-                    <div class="search-container">
-                        <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos en todas las listas...">
-                    </div>
-                    <div class="search-controls">
-                        <button class="search-btn" onclick="searchProducts()">🔍 Buscar</button>
-                        <button class="clear-btn" onclick="clearLists()">🗑️ Limpiar Todo</button>
-                    </div>
-                </div>
-
-                <!-- Resultados -->
-                <div class="results-section">
-                    <div id="searchResults">
-                        <div class="no-results">
-                            <p>👆 Carga tu primera lista de precios y comienza a buscar</p>
-                            <p style="margin-top: 10px; font-size: 0.9rem; color: #28a745;">✨ Sistema preparado para integración con IA</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="sidebar">
-                <!-- Listas cargadas -->
-                <div class="loaded-lists">
-                    <h4 class="section-title">
-                        📋 Listas Cargadas
-                    </h4>
-                    <div id="loadedLists">
-                        <p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>
-                    </div>
-                </div>
-
-                <!-- Estadísticas -->
-                <div class="stats-section">
-                    <h4 style="margin-bottom: 15px; color: #2c3e50;">📊 Estadísticas</h4>
-                    <div class="stat-item">
-                        <span class="stat-label">Total listas:</span>
-                        <span class="stat-value" id="totalLists">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Productos totales:</span>
-                        <span class="stat-value" id="totalProducts">0</span>
-                    </div>
-                    
-                </div>
-            </div>
-        </div>
+  <div class="container">
+    <div class="header">
+      <div class="ai-badge">🚚 DistriSulpi</div>
+      <h1>🛍️ Comparador de Precios</h1>
+      <p>Sistema inteligente para DistriSulpi</p>
     </div>
 
-    <script>
-        // Cargar información de listas al inicio
-        loadListsInfo();
-        loadStats();  
-        // Manejo del formulario de upload
-                document.getElementById('uploadForm').addEventListener('submit', function(e) {
-                e.preventDefault();
+    <div class="main-content">
+      <div class="left-panel">
+        <!-- Upload -->
+        <div class="upload-section">
+          <h3 class="section-title">📁 Cargar Lista de Precios</h3>
 
-                const formData = new FormData();
-                const fileInput = document.getElementById('fileInput');
-                const supplierName = document.getElementById('supplierName').value;
-                const supplierAddress = document.getElementById('supplierAddress').value;   // NUEVO
-                const supplierPhone = document.getElementById('supplierPhone').value;       // NUEVO
-                const supplierEmail = document.getElementById('supplierEmail').value;   
-                if (!fileInput.files[0]) {
-                    showStatus('error', 'Por favor selecciona un archivo');
-                    return;
-                }
+          <form id="uploadForm" class="upload-form" aria-label="Subir lista de precios">
+            <div class="form-group">
+              <label class="form-label" for="supplierName">Nombre del Proveedor</label>
+              <input type="text" id="supplierName" class="form-input" placeholder="Ej: Distribuidora ABC" required />
+            </div>
 
-                formData.append('file', fileInput.files[0]);
-                formData.append('supplier_name', supplierName);
-                formData.append('supplier_address', supplierAddress); // NUEVO
-                formData.append('supplier_phone', supplierPhone);     // NUEVO
-                formData.append('supplier_email', supplierEmail); 
-            
-            showStatus('info', '⏳ Procesando archivo...');
-            
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showStatus('success', '✅ ' + data.message);
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
-                    loadListsInfo();
-                    loadStats();   // Recargar info de listas
-                    
-                    // Limpiar formulario
-                    document.getElementById('uploadForm').reset();
-                    updateFileButton();
-                } else {
-                    showStatus('error', '❌ ' + (data.error || 'Error desconocido'));
-                    if (data.debug_info) {
-                        showDebug(data.debug_info);
-                    }
-                }
-            })
-            .catch(error => {
-                showStatus('error', '🔴 Error de conexión: ' + error.message);
-                console.error('Error:', error);
-            });
-        });
+            <div class="form-group">
+              <label class="form-label" for="supplierAddress">Dirección del Proveedor</label>
+              <input type="text" id="supplierAddress" class="form-input" placeholder="Ej: Av. Corrientes 1234, CABA" />
+            </div>
 
-        // Búsqueda con Enter
-        document.getElementById('searchInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                searchProducts();
-            }
-        });
+            <div class="form-group">
+              <label class="form-label" for="supplierPhone">Teléfono del Proveedor</label>
+              <input type="tel" id="supplierPhone" class="form-input" placeholder="Ej: +54 11 5555-5555" />
+            </div>
 
-        // Actualizar botón de archivo cuando se selecciona
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            updateFileButton();
-        });
+            <div class="form-group">
+              <label class="form-label" for="supplierEmail">Email</label>
+              <input type="email" id="supplierEmail" class="form-input" placeholder="Ej: ejemplo@gmail.com" />
+            </div>
 
-        function updateFileButton() {
-            const fileInput = document.getElementById('fileInput');
-            const button = document.querySelector('.file-input-button');
-            
-            if (fileInput.files[0]) {
-                button.innerHTML = `📊 ${fileInput.files[0].name}`;
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            } else {
-                button.innerHTML = '📊 Seleccionar Archivo';
-                button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
-            }
-        }
+            <div class="form-group">
+              <label class="form-label">Archivo Excel</label>
+              <div class="file-input-wrapper">
+                <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls" required />
+                <button type="button" class="file-input-button" onclick="document.getElementById('fileInput').click()">📊 Seleccionar Archivo</button>
+              </div>
+            </div>
 
-        function searchProducts() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (!query) {
-                showStatus('error', '🔍 Ingresa un término de búsqueda');
-                return;
-            }
+            <button type="submit" class="submit-btn">🚀 Cargar Lista</button>
+          </form>
 
-            const resultsDiv = document.getElementById('searchResults');
-            resultsDiv.innerHTML = `
-                <div class="loading">
-                    <div class="spinner"></div>
-                    Buscando "${query}"...
-                </div>
-            `;
+          <div id="uploadStatus" role="status" aria-live="polite"></div>
+        </div>
 
-            fetch(`/search?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    displayResults(data);
-                    document.getElementById('lastSearch').textContent = query;
-                })
-                .catch(error => {
-                    resultsDiv.innerHTML = `
-                        <div class="no-results">
-                            <p>❌ Error en la búsqueda: ${error.message}</p>
-                        </div>
-                    `;
-                });
-        }
+        <!-- Búsqueda -->
+        <div class="search-section">
+          <h3 class="section-title">🔍 Buscar Productos</h3>
+          <div class="search-container">
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar productos en todas las listas..." />
+          </div>
+          <div class="search-controls">
+            <button class="search-btn" onclick="searchProducts()">🔍 Buscar</button>
+            <button class="clear-btn" onclick="clearLists()">🗑️ Limpiar Todo</button>
+          </div>
+        </div>
 
-        function displayResults(data) {
-            const resultsDiv = document.getElementById('searchResults');
-            
-            if (data.total === 0) {
-                const message = data.message || `No se encontraron productos que coincidan con "${data.query}"`;
-                resultsDiv.innerHTML = `
-                    <div class="no-results">
-                        <p>🔍 ${message}</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const resultsInfo = `
-                <div class="results-info">
-                    <div>📊 ${data.total} resultado(s) para "<strong>${data.query}</strong>"</div>
-                </div>
-            `;
-
-            const tableHeader = `
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 50%;">Producto</th>
-                            <th style="width: 25%;">Precio</th>
-                            <th style="width: 25%;">Mayorista</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            const tableRows = data.results.map(product => `
-                <tr>
-                    <td class="product-name-cell">${product.product}</td>
-                    <td class="price-cell">${product.price_formatted}</td>
-                    <td class="supplier-cell">${product.supplier}</td>
-                </tr>
-            `).join('');
-
-            const tableFooter = `
-                    </tbody>
-                </table>
-            `;
-
-            resultsDiv.innerHTML = resultsInfo + tableHeader + tableRows + tableFooter;
-        }
-
-function loadListsInfo() {
-  fetch('/lists')
-    .then(response => response.json())
-    .then(data => {
-      const listsDiv = document.getElementById('loadedLists');
-      if (data.total === 0) {
-        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
-        updateStats(0, 0);
-        return;
-      }
-
-      let totalProducts = 0;
-      const html = data.lists.map(list => {
-        totalProducts += list.total_products;
-        const supplierKey = encodeURIComponent(list.supplier ?? '');
-        return `
-          <div class="list-item">
-            <button type="button" class="remove-btn" data-supplier="${supplierKey}" title="Eliminar lista">×</button>
-            <div class="list-name">${list.supplier}</div>
-            <div class="list-info">
-              ${list.total_products} productos<br>
-              <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
+        <!-- Resultados -->
+        <div class="results-section">
+          <div id="searchResults">
+          <div id="xbar" class="xbar" aria-hidden="true"><div></div></div>  
+            <div class="no-results" style="text-align:center;padding:48px 16px;color:#6c757d">
+              <p>👆 Carga tu primera lista de precios y comienza a buscar</p>
+              <p style="margin-top:10px;font-size:.9rem;color:#28a745">✨ Sistema preparado para integración con IA</p>
             </div>
           </div>
-        `;
-      }).join('');
+        </div>
+      </div>
 
-      listsDiv.innerHTML = html;
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="loaded-lists">
+          <h4 class="section-title">📋 Listas Cargadas</h4>
+          <div id="loadedLists">
+            <p style="color:#6c757d;text-align:center;padding:20px">No hay listas cargadas</p>
+          </div>
+        </div>
 
-      // Registrar el listener UNA sola vez por contenedor
-      if (!listsDiv.__removeBound) {
-        listsDiv.addEventListener('click', function (e) {
-          const btn = e.target.closest('.remove-btn');
-          if (!btn) return;
-          e.preventDefault();
-          e.stopPropagation();
-          const supplier = decodeURIComponent(btn.dataset.supplier || '');
-          if (typeof removeList === 'function') {
-            removeList(supplier);
+        <div class="stats-section" aria-label="Estadísticas">
+          <h4 style="margin-bottom:10px;color:#2c3e50">📊 Estadísticas</h4>
+          <div class="stat-item"><span class="stat-label">Total listas:</span><span class="stat-value" id="totalLists">0</span></div>
+          <div class="stat-item"><span class="stat-label">Productos totales:</span><span class="stat-value" id="totalProducts">0</span></div>
+          <div class="stat-item"><span class="stat-label">Última búsqueda:</span><span class="stat-value" id="lastSearch">-</span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Logout fijo -->
+  <div class="logout-wrap">
+    <form action="{{ url_for('logout') }}" method="post">
+      <button type="submit" class="logout-btn" title="Cerrar sesión">
+        <span>⟵</span><span>Cerrar sesión</span>
+      </button>
+    </form>
+  </div>
+
+  <script>
+    // Cargar info de listas al inicio
+    loadListsInfo();
+
+    // Upload handler
+    document.getElementById('uploadForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      const fileInput = document.getElementById('fileInput');
+      if(!fileInput.files[0]){ showStatus('error','Por favor selecciona un archivo'); return; }
+
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      fd.append('supplier_name', document.getElementById('supplierName').value);
+      fd.append('supplier_address', document.getElementById('supplierAddress').value);
+      fd.append('supplier_phone', document.getElementById('supplierPhone').value);
+      fd.append('supplier_email', document.getElementById('supplierEmail').value);
+
+      showStatus('info','⏳ Procesando archivo...');
+
+      fetch('/upload',{method:'POST',body:fd})
+        .then(r=>r.json())
+        .then(data=>{
+          if(data.success){
+            showStatus('success','✅ '+data.message);
+            if(data.debug_info) showDebug(data.debug_info);
+            loadListsInfo();
+            document.getElementById('uploadForm').reset();
+            updateFileButton();
+          }else{
+            showStatus('error','❌ '+(data.error||'Error desconocido'));
+            if(data.debug_info) showDebug(data.debug_info);
           }
+        })
+        .catch(err=>showStatus('error','🔴 Error de conexión: '+err.message));
+    });
+
+    // Buscar con Enter
+    document.getElementById('searchInput').addEventListener('keypress', e=>{
+      if(e.key==='Enter') searchProducts();
+    });
+
+    // Botón archivo
+    document.getElementById('fileInput').addEventListener('change', updateFileButton);
+    function updateFileButton(){
+      const fi = document.getElementById('fileInput');
+      const btn = document.querySelector('.file-input-button');
+      btn.textContent = fi.files[0] ? '📊 '+fi.files[0].name : '📊 Seleccionar Archivo';
+    }
+
+    function searchProducts(){
+      const q = document.getElementById('searchInput').value.trim();
+      const results = document.getElementById('searchResults');
+      if(!q){ showStatus('error','🔍 Ingresa un término de búsqueda'); return; }
+      results.innerHTML = '<div class="loading" style="text-align:center;padding:32px;color:#007bff"><div class="spinner" style="border:4px solid #f3f3f3;border-top:4px solid #007bff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px"></div>Buscando "'+q+'"...</div>';
+      fetch('/search?q='+encodeURIComponent(q))
+        .then(r=>r.json())
+        .then(data=>{ displayResults(data); document.getElementById('lastSearch').textContent=q; })
+        .catch(err=>{ results.innerHTML = '<div class="no-results" style="text-align:center;padding:40px;color:#6c757d">❌ Error: '+err.message+'</div>';});
+    }
+
+    function displayResults(data){
+      const host = document.getElementById('searchResults');
+      if(!data || !data.total){ host.innerHTML = '<div class="no-results" style="text-align:center;padding:40px;color:#6c757d">No se encontraron productos.</div>'; return; }
+      initXbar(document.querySelector('.results-section'));
+
+      const header = `
+        <div class="results-info">
+          <div>📊 ${data.total} resultado(s) para "<strong>${(data.query||'')}</strong>"</div>
+        </div>
+        <table class="results-table" role="table" aria-label="Resultados de búsqueda">
+          <thead><tr>
+            <th>Producto</th><th>Precio</th><th>Mayorista</th>
+          </tr></thead>
+          <tbody>
+      `;
+
+      const rows = data.results.map(p=>`
+        <tr role="row">
+          <td class="product-name-cell" data-label="Producto">${p.product}</td>
+          <td class="price-cell" data-label="Precio">${p.price_formatted}</td>
+          <td class="supplier-cell" data-label="Mayorista">${p.supplier}</td>
+        </tr>
+      `).join('');
+
+      host.innerHTML = header + rows + '</tbody></table>';
+    }
+
+    function loadListsInfo(){
+      fetch('/lists').then(r=>r.json()).then(data=>{
+        const listsDiv = document.getElementById('loadedLists');
+        if(!data.total){ listsDiv.innerHTML='<p style="color:#6c757d;text-align:center;padding:20px">No hay listas cargadas</p>'; updateStats(0,0); return; }
+        let totalProducts = 0;
+        listsDiv.innerHTML = data.lists.map(list=>{
+          totalProducts += list.total_products;
+          return `
+            <div class="list-item">
+              <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar">×</button>
+              <div class="list-name" style="font-weight:700;color:#2c3e50;margin-bottom:4px">${list.supplier}</div>
+              <div class="list-info" style="font-size:.9rem;color:#6c757d">
+                ${list.total_products} productos<br>
+                <small>${list.direccion ? '📍 '+list.direccion+'<br>' : ''}${list.telefono ? '☎️ '+list.telefono+'<br>' : ''}Archivo: ${list.filename}</small>
+              </div>
+            </div>
+          `;
+        }).join('');
+        updateStats(data.total,totalProducts);
+      });
+    }
+
+    function updateStats(totalLists,totalProducts){
+      document.getElementById('totalLists').textContent = totalLists;
+      document.getElementById('totalProducts').textContent = (totalProducts||0).toLocaleString('es-AR');
+    }
+
+    function clearLists(){
+      if(!confirm('¿Eliminar TODAS las listas cargadas?')) return;
+      fetch('/clear').then(r=>r.json()).then(data=>{
+        showStatus('success','🗑️ '+data.message);
+        loadListsInfo();
+        document.getElementById('searchResults').innerHTML = '<div class="no-results" style="text-align:center;padding:40px;color:#6c757d">🗑️ Todas las listas fueron eliminadas</div>';
+        document.getElementById('searchInput').value='';
+        document.getElementById('lastSearch').textContent='-';
+      });
+    }
+
+    function removeList(supplier){
+      if(!confirm(`¿Eliminar lista de ${supplier}?`)) return;
+      fetch('/remove_list/'+encodeURIComponent(supplier))
+        .then(r=>r.json())
+        .then(data=>{
+          showStatus(data.success?'success':'error', (data.success?'✅ ':'❌ ')+(data.message||''));
+          loadListsInfo();
+          const q = document.getElementById('searchInput').value.trim();
+          if(q){ setTimeout(()=>searchProducts(),500); }
         });
-        listsDiv.__removeBound = true;
+    }
+
+    function showStatus(type,msg){
+      const div = document.getElementById('uploadStatus');
+      div.innerHTML = `<div class="status-message status-${type}">${msg}</div>`;
+      setTimeout(()=>{div.innerHTML='';},5000);
+    }
+    function showDebug(data) {
+        const div = document.getElementById('uploadStatus');
+        
+        // Convertir diferentes tipos de datos a array de strings para mostrar
+        let debugLines = [];
+        
+        if (Array.isArray(data)) {
+            // Si es un array, convertir cada elemento a string
+            debugLines = data.map(item => String(item));
+        } else if (data && typeof data === 'object') {
+            // Si es un objeto, mostrar sus propiedades
+            debugLines = Object.entries(data).map(([key, value]) => `${key}: ${value}`);
+        } else if (data !== null && data !== undefined) {
+            // Si es un valor primitivo, convertir a string y poner en array
+            debugLines = [String(data)];
+        } else {
+            // Si es null o undefined
+            debugLines = ['No data provided'];
+        }
+        
+        div.innerHTML += `<div class="debug-info"><strong>🔧 Debug:</strong><br>${debugLines.join('<br>')}</div>`;
+    }
+
+  function initXbar(scroller){
+    const xbar = document.getElementById('xbar');
+    if(!xbar || !scroller) return;
+    const inner = xbar.firstElementChild;
+
+    function refresh(){
+      // iguala el ancho del "espejo" al scrollWidth real
+      inner.style.width = scroller.scrollWidth + 'px';
+      // mostrar solo si es más ancho que el viewport
+      xbar.style.display = (scroller.scrollWidth > scroller.clientWidth) ? 'block' : 'none';
+      xbar.scrollLeft = scroller.scrollLeft;
+    }
+
+    // sincronización en ambos sentidos
+    xbar.onscroll = () => { scroller.scrollLeft = xbar.scrollLeft; };
+    scroller.onscroll = () => { xbar.scrollLeft = scroller.scrollLeft; };
+
+    // refrescar en resize y cuando cambian los resultados
+    window.addEventListener('resize', refresh);
+    // un pequeño defer para esperar al layout
+    setTimeout(refresh, 0);
+  }
+  // Agregar esto a tu index.html en el panel de admin
+
+  // Función mejorada para manejar la respuesta del upload con debugging
+  function handleUploadResponse(response) {
+      const messageDiv = document.getElementById('uploadMessage');
+      
+      if (response.success) {
+          // Upload exitoso
+          messageDiv.className = 'alert alert-success';
+          messageDiv.innerHTML = `
+              <h4>✅ ${response.message}</h4>
+              <div class="mt-3">
+                  <strong>Detalles:</strong>
+                  <ul class="mb-2">
+                      <li><strong>Proveedor:</strong> ${response.supplier}</li>
+                      <li><strong>Archivo:</strong> ${response.filename}</li>
+                      <li><strong>Productos cargados:</strong> ${response.total_products}</li>
+                      <li><strong>Estado BD:</strong> ${response.db_status}</li>
+                      <li><strong>Estado Proveedor:</strong> ${response.proveedor_status}</li>
+                  </ul>
+              </div>
+              ${response.processing_summary ? createProcessingSummaryHTML(response.processing_summary) : ''}
+              ${response.debug_available ? `<button class="btn btn-info btn-sm mt-2" onclick="showDebugDetails('${response.supplier}')">Ver Detalles de Procesamiento</button>` : ''}
+          `;
+          
+          // Recargar lista de archivos
+          loadFileList();
+          
+      } else {
+          // Upload fallido
+          messageDiv.className = 'alert alert-danger';
+          messageDiv.innerHTML = `
+              <h4>❌ ${response.message}</h4>
+              <div class="mt-3">
+                  <strong>Archivo:</strong> ${response.filename || 'Unknown'}<br>
+                  <strong>Proveedor:</strong> ${response.supplier || 'Unknown'}
+              </div>
+              ${response.failure_analysis ? createFailureAnalysisHTML(response.failure_analysis) : ''}
+              ${response.recommendations ? createRecommendationsHTML(response.recommendations) : ''}
+              ${response.debug_info ? `<button class="btn btn-warning btn-sm mt-2" onclick="showFullDebugInfo(${JSON.stringify(response.debug_info)})">Ver Información Completa de Debug</button>` : ''}
+          `;
       }
-
-      updateStats(data.total, totalProducts);
-    })
-    .catch(error => console.error('Error cargando listas:', error));
-}
-
-
-
-        function updateStats(totalLists, totalProducts) {
-            document.getElementById('totalLists').textContent = totalLists;
-            document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
-        }
-
-        function clearLists() {
-            if (confirm('¿Estás seguro de eliminar TODAS las listas cargadas?')) {
-                fetch('/clear')
-                    .then(response => response.json())
-                    .then(data => {
-                        showStatus('success', '🗑️ ' + data.message);
-                        loadListsInfo();
-                        loadStats(); 
-                        document.getElementById('searchResults').innerHTML = `
-                            <div class="no-results">
-                                <p>🗑️ Todas las listas han sido eliminadas</p>
-                                <p style="margin-top: 10px;">Carga nuevos archivos para comenzar</p>
-                            </div>
-                        `;
-                        document.getElementById('searchInput').value = '';
-                        document.getElementById('lastSearch').textContent = '-';
-                    });
-            }
-        }
-
-        function removeList(supplier) {
-            if (confirm(`¿Eliminar lista de ${supplier}?`)) {
-                    fetch(`/remove_list/${encodeURIComponent(supplier)}`, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',               // asegura que viajen las cookies de sesión
-                    headers: { 'Accept': 'application/json' } // por claridad
-                    })
-
-                        
-                        // Si había una búsqueda activa, repetirla
-                        const currentSearch = document.getElementById('searchInput').value.trim();
-                        if (currentSearch) {
-                            setTimeout(() => searchProducts(), 500);
-                        }
-                    };
-            }
-
-
-        function showStatus(type, message) {
-            const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
-            
-            // Auto-limpiar después de 5 segundos
-            setTimeout(() => {
-                statusDiv.innerHTML = '';
-            }, 5000);
-        }
-
-        function showDebug(debugInfo) {
-            const statusDiv = document.getElementById('uploadStatus');
-            let debugHtml = '<div class="debug-info"><strong>🔧 Información de debug:</strong><br>';
-            debugInfo.forEach(info => {
-                debugHtml += info + '<br>';
-            });
-            debugHtml += '</div>';
-            statusDiv.innerHTML += debugHtml;
-        }
-
-    
-  function loadStats() {
-    fetch('/stats', { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(d => {
-        if (!d.success) return;
-        updateStats(d.total_lists, d.total_products);
-        // Si querés mostrar la última actualización:
-        // document.getElementById('lastSearch').textContent = d.last_update ? new Date(d.last_update).toLocaleString('es-AR') : '-';
-      })
-      .catch(err => console.error('Error cargando stats:', err));
+      
+      messageDiv.style.display = 'block';
   }
 
-    </script>
-    
+  function createProcessingSummaryHTML(summary) {
+      if (!summary || !summary.sheets_summary) return '';
+      
+      let html = `
+          <div class="mt-3">
+              <h5>📊 Resumen de Procesamiento:</h5>
+              <div class="row">
+                  <div class="col-md-6">
+                      <strong>Calidad de Datos:</strong> ${summary.data_quality_score || 0}%
+                  </div>
+                  <div class="col-md-6">
+                      <strong>Tasa de Extracción:</strong> ${summary.processing_efficiency?.extraction_rate?.toFixed(1) || 0}%
+                  </div>
+              </div>
+              <div class="mt-2">
+                  <h6>Hojas Procesadas:</h6>
+                  <ul class="list-unstyled">
+      `;
+      
+      summary.sheets_summary.forEach(sheet => {
+          const successRate = sheet.success_rate?.toFixed(1) || 0;
+          const statusIcon = successRate > 50 ? '✅' : successRate > 0 ? '⚠️' : '❌';
+          
+          html += `
+              <li>${statusIcon} <strong>${sheet.sheet_name}:</strong> 
+                  ${sheet.products_extracted} productos extraídos 
+                  (${successRate}% de ${sheet.rows_processed} filas)
+                  ${sheet.columns_used ? `- Columnas: ${sheet.columns_used.product} / ${sheet.columns_used.price}` : ''}
+              </li>
+          `;
+      });
+      
+      html += '</ul></div></div>';
+      return html;
+  }
+
+  function createFailureAnalysisHTML(analysis) {
+      if (!analysis) return '';
+      
+      let html = `
+          <div class="mt-3 p-3 bg-light border rounded">
+              <h5>🔍 Análisis de Problemas:</h5>
+      `;
+      
+      // Mostrar problemas primarios
+      if (analysis.primary_issues && analysis.primary_issues.length > 0) {
+          html += `<div class="mb-2"><strong>Problemas Principales:</strong> ${analysis.primary_issues.join(', ')}</div>`;
+      }
+      
+      // Mostrar análisis por hoja
+      if (analysis.sheet_analysis && analysis.sheet_analysis.length > 0) {
+          html += '<h6>Análisis por Hoja:</h6><ul>';
+          analysis.sheet_analysis.forEach(sheet => {
+              const status = sheet.status === 'failed' ? '❌' : '⚠️';
+              html += `<li>${status} <strong>${sheet.sheet_name}:</strong> `;
+              if (sheet.error) {
+                  html += `Error: ${sheet.error}`;
+              } else {
+                  html += `${sheet.products_found} productos encontrados`;
+              }
+              html += '</li>';
+          });
+          html += '</ul>';
+      }
+      
+      // Problemas de detección de columnas
+      if (analysis.column_detection_issues && analysis.column_detection_issues.length > 0) {
+          html += '<h6>Problemas de Columnas:</h6><ul>';
+          analysis.column_detection_issues.forEach(issue => {
+              html += `<li><strong>${issue.sheet}:</strong> ${issue.detail}</li>`;
+          });
+          html += '</ul>';
+      }
+      
+      html += '</div>';
+      return html;
+  }
+
+  function createRecommendationsHTML(recommendations) {
+      if (!recommendations || recommendations.length === 0) return '';
+      
+      let html = `
+          <div class="mt-3 p-3 bg-warning bg-opacity-10 border border-warning rounded">
+              <h5>💡 Recomendaciones:</h5>
+              <ul>
+      `;
+      
+      recommendations.forEach(rec => {
+          const priorityIcon = rec.priority === 'high' ? '🔴' : rec.priority === 'medium' ? '🟡' : '🟢';
+          html += `
+              <li class="mb-2">
+                  ${priorityIcon} <strong>${rec.message}</strong>
+                  ${rec.detailed_suggestion ? `<br><small class="text-muted">${rec.detailed_suggestion}</small>` : ''}
+              </li>
+          `;
+      });
+      
+      html += '</ul></div>';
+      return html;
+  }
+
+  function showDebugDetails(supplierName) {
+      // Modal para mostrar detalles de debugging
+      const modal = new bootstrap.Modal(document.getElementById('debugModal') || createDebugModal());
+      
+      // Cargar información de debug del proveedor
+      fetch(`/debug/logs/${encodeURIComponent(supplierName)}`)
+          .then(response => response.json())
+          .then(data => {
+              updateDebugModal(data, supplierName);
+              modal.show();
+          })
+          .catch(error => {
+              console.error('Error loading debug info:', error);
+              alert('Error cargando información de debug');
+          });
+  }
+
+  function createDebugModal() {
+      const modalHTML = `
+          <div class="modal fade" id="debugModal" tabindex="-1">
+              <div class="modal-dialog modal-lg">
+                  <div class="modal-content">
+                      <div class="modal-header">
+                          <h5 class="modal-title">Información de Debug</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                      </div>
+                      <div class="modal-body" id="debugModalBody">
+                          <div class="text-center">
+                              <div class="spinner-border" role="status">
+                                  <span class="visually-hidden">Cargando...</span>
+                              </div>
+                          </div>
+                      </div>
+                      <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', modalHTML);
+      return document.getElementById('debugModal');
+  }
+
+  function updateDebugModal(data, supplierName) {
+      const body = document.getElementById('debugModalBody');
+      
+      if (data.success) {
+          body.innerHTML = `
+              <h6>📊 Resumen para: ${supplierName}</h6>
+              <div class="row">
+                  <div class="col-md-6">
+                      <ul class="list-unstyled">
+                          <li><strong>Total Productos:</strong> ${data.summary.total_products}</li>
+                          <li><strong>Precio Promedio:</strong> $${data.summary.avg_price.toFixed(2)}</li>
+                          <li><strong>Primera Carga:</strong> ${data.summary.first_load ? new Date(data.summary.first_load).toLocaleString() : 'N/A'}</li>
+                          <li><strong>Última Actualización:</strong> ${data.summary.last_load ? new Date(data.summary.last_load).toLocaleString() : 'N/A'}</li>
+                      </ul>
+                  </div>
+                  <div class="col-md-6">
+                      <h6>🔍 Muestra de Productos:</h6>
+                      <div style="max-height: 200px; overflow-y: auto;">
+                          <ul class="list-unstyled small">
+                              ${data.sample_products.map(p => `
+                                  <li>${p.product} - $${p.price.toFixed(2)}</li>
+                              `).join('')}
+                          </ul>
+                      </div>
+                  </div>
+              </div>
+              
+              <div class="mt-3">
+                  <h6>🛠️ Herramientas de Debug:</h6>
+                  <button class="btn btn-sm btn-outline-primary me-2" onclick="testPriceCleaning()">Test Limpieza Precios</button>
+                  <button class="btn btn-sm btn-outline-info me-2" onclick="testColumnDetection()">Test Detección Columnas</button>
+                  <button class="btn btn-sm btn-outline-success" onclick="loadProcessingStats()">Estadísticas Generales</button>
+              </div>
+              
+              ${data.note ? `<div class="mt-3 p-2 bg-info bg-opacity-10 rounded"><small>${data.note}</small></div>` : ''}
+          `;
+      } else {
+          body.innerHTML = `
+              <div class="alert alert-danger">
+                  <h6>Error cargando información de debug</h6>
+                  <p>${data.error}</p>
+              </div>
+          `;
+      }
+  }
+
+  function showFullDebugInfo(debugInfo) {
+      console.log('🐛 INFORMACIÓN COMPLETA DE DEBUG:', debugInfo);
+      
+      // También mostrar en un modal o alert para debug rápido
+      const summary = debugInfo.structure_analysis ? 
+          `Hojas encontradas: ${debugInfo.structure_analysis.total_sheets || 0}` : 
+          'Información de estructura no disponible';
+      
+      alert(`DEBUG INFO:\n${summary}\n\nVer consola (F12) para información completa.`);
+  }
+
+  // Funciones de test para debugging
+  function testPriceCleaning() {
+      const testValues = prompt('Ingrese valores de precio para probar (separados por coma):');
+      if (!testValues) return;
+      
+      fetch('/debug/test_price_cleaning', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+              test_values: testValues.split(',').map(v => v.trim())
+          })
+      })
+      .then(response => response.json())
+      .then(data => {
+          console.log('🧹 RESULTADOS TEST LIMPIEZA:', data);
+          
+          let resultsHTML = '<h6>Resultados Test Limpieza Precios:</h6><table class="table table-sm"><thead><tr><th>Input</th><th>Output</th><th>Status</th></tr></thead><tbody>';
+          
+          data.test_results.forEach(result => {
+              const rowClass = result.status === 'accepted' ? 'table-success' : 
+                              result.status === 'rejected' ? 'table-warning' : 'table-danger';
+              resultsHTML += `<tr class="${rowClass}"><td>${result.input}</td><td>${result.output || 'null'}</td><td>${result.status}</td></tr>`;
+          });
+          
+          resultsHTML += '</tbody></table>';
+          resultsHTML += `<p><strong>Resumen:</strong> ${data.summary.accepted} aceptados, ${data.summary.rejected} rechazados, ${data.summary.errors} errores</p>`;
+          
+          document.getElementById('debugModalBody').innerHTML = resultsHTML;
+      })
+      .catch(error => {
+          console.error('Error en test:', error);
+          alert('Error ejecutando test de limpieza');
+      });
+  }
+  </script>
 </body>
 </html>
- <!-- Botón Logout fijo arriba-izquierda -->
-<style>
-  .logout-wrap{position:fixed;top:16px;left:16px;z-index:1000}
-  .logout-btn{
-    display:inline-flex;align-items:center;gap:.5rem;
-    padding:.55rem .9rem;border-radius:9999px;cursor:pointer;
-    border:1px solid #1c2947;background:#0f172a;color:#e8edf7;
-    box-shadow:0 6px 18px rgba(0,0,0,.25); transition:transform .12s, box-shadow .12s, opacity .12s
-  }
-  .logout-btn:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(0,0,0,.32)}
-  .logout-btn:active{transform:translateY(0)}
-  .logout-icon{font-size:1rem;line-height:1}
-</style>
-
-<div class="logout-wrap">
-  <form action="{{ url_for('logout') }}" method="post">
-    <button type="submit" class="logout-btn" title="Cerrar sesión">
-      <span class="logout-icon">⟵</span>
-      <span>Cerrar sesión</span>
-    </button>
-  </form>
-</div>
