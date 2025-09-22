@@ -2098,11 +2098,11 @@ def cleanup_temp_files():
     
 def get_connection():
     return mysql.connector.connect(
-        host="sql10.freesqldatabase.com",
-        user="sql10799580",
-        password="bLEMiddsgJ",
+        host="bkt3yyvc0mxgzcwq7xbx-mysql.services.clever-cloud.com",
+        user="uimp56j4h2le9z65",
+        password="NIlTf7NYpkS8BkZcyCOl",
         port=3306,
-        database="sql10799580",
+        database="bkt3yyvc0mxgzcwq7xbx",
         autocommit=False
     )
 
