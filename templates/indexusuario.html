@@ -3,55 +3,77 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ComparApp+</title>
+  <title>ComparApp Argentina - Usuario</title>
 <script>
   let cartData = { cart: [], total: 0, suppliers: {} };
   let businessDataSaved = false;
+  let isScrolling = false;
+  let scrollTimeout = null;
+  let currentUser = '{{ user }}';
 
-  // Al cargar
   document.addEventListener('DOMContentLoaded', () => {
     loadCart();
     loadBusinessData();
-    createMobileCounter(); // ✅ NUEVO: Crear contador móvil
+    createMobileCounter();
+    loadListsInfo();
+    loadStats();
 
-    // submit del modal de negocio
     const businessForm = document.getElementById('businessForm');
-    businessForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      saveBusinessData();
-    });
+    if (businessForm) {
+      businessForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveBusinessData();
+      });
+    }
 
-    // Buscar con Enter
-    document.getElementById('searchInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') searchProducts();
-    });
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          searchProducts();
+        }
+      });
+    }
+    
     const requiredFields = ['businessName', 'businessAddress', 'businessPhone'];
     requiredFields.forEach(fieldId => {
-        const field = document.getElementById(fieldId);
-        if (field) {
-            field.addEventListener('blur', function() {
-                if (!this.value.trim()) {
-                    this.style.borderColor = '#dc3545';
-                } else {
-                    this.style.borderColor = '#28a745';
-                }
-            });
-            
-            field.addEventListener('input', function() {
-                if (this.value.trim()) {
-                    this.style.borderColor = '#ced4da';
-                }
-            });
-        }
+      const field = document.getElementById(fieldId);
+      if (field) {
+        field.addEventListener('blur', function() {
+          if (!this.value.trim()) {
+            this.style.borderColor = '#dc3545';
+          } else {
+            this.style.borderColor = '#28a745';
+          }
+        });
+        
+        field.addEventListener('input', function() {
+          if (this.value.trim()) {
+            this.style.borderColor = '#ced4da';
+          }
+        });
+      }
     });
 
-    // ✅ NUEVO: Escuchar scroll para mostrar/ocultar contador móvil
-    window.addEventListener('scroll', handleScrollForMobileCounter);
+    window.addEventListener('scroll', throttle(handleScrollForMobileCounter, 100), { passive: true });
   });
 
-  // ✅ NUEVO: Crear el contador móvil flotante
+  function throttle(func, limit) {
+    let inThrottle;
+    return function() {
+      const args = arguments;
+      const context = this;
+      if (!inThrottle) {
+        func.apply(context, args);
+        inThrottle = true;
+        setTimeout(() => inThrottle = false, limit);
+      }
+    }
+  }
+
   function createMobileCounter() {
-    if (document.getElementById('mobileCartCounter')) return; // Ya existe
+    if (document.getElementById('mobileCartCounter')) return;
     
     const counter = document.createElement('div');
     counter.id = 'mobileCartCounter';
@@ -61,78 +83,102 @@
     document.body.appendChild(counter);
   }
 
-  // ✅ NUEVO: Función para scroll al carrito
   function scrollToCart() {
+    isScrolling = true;
+    
     const cartSection = document.querySelector('.sidebar');
     if (cartSection) {
       cartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      
+      setTimeout(() => {
+        isScrolling = false;
+      }, 1000);
     }
   }
 
-  // ✅ NUEVO: Función para manejar el contador flotante en móviles
   function handleScrollForMobileCounter() {
-    if (window.innerWidth > 768) return; // Solo en móviles
+    if (window.innerWidth > 768 || isScrolling) return;
     
-    const counter = document.getElementById('mobileCartCounter');
-    if (!counter) return;
-
-    const cartItems = Array.isArray(cartData?.cart) ? cartData.cart : [];
-    if (cartItems.length === 0) {
-      counter.style.display = 'none';
-      return;
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
     }
+    
+    scrollTimeout = setTimeout(() => {
+      const counter = document.getElementById('mobileCartCounter');
+      if (!counter) return;
 
-    // Mostrar el contador cuando se scrollea hacia abajo
-    if (window.scrollY > 100) {
-      counter.style.display = 'block';
-      counter.style.opacity = '1';
-    } else {
-      counter.style.opacity = '0';
-      setTimeout(() => {
-        if (window.scrollY <= 100) {
-          counter.style.display = 'none';
-        }
-      }, 300);
-    }
+      const cartItems = Array.isArray(cartData?.cart) ? cartData.cart : [];
+      if (cartItems.length === 0) {
+        counter.style.display = 'none';
+        return;
+      }
+
+      if (window.scrollY > 100) {
+        counter.style.display = 'block';
+        counter.style.opacity = '1';
+      } else {
+        counter.style.opacity = '0';
+        setTimeout(() => {
+          if (window.scrollY <= 100) {
+            counter.style.display = 'none';
+          }
+        }, 300);
+      }
+    }, 50);
   }
 
   function loadListsInfo() {
-            fetch('/lists')
-                .then(response => response.json())
-                .then(data => {
-                    const listsDiv = document.getElementById('loadedLists');
-                    if (data.total === 0) {
-                        listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
-                        updateStats(0, 0);
-                        return;
-                    }
-
-                    let totalProducts = 0;
-                    const html = data.lists.map(list => {
-                        totalProducts += list.total_products;
-                        return `
-                         <div class="list-item">
-                            <button class="remove-btn" onclick="removeList('${list.supplier}')" title="Eliminar lista">×</button>
-                            <div class="list-name">${list.supplier}</div>
-                            <div class="list-info">
-                            ${list.total_products} productos<br>
-                            <small>${list.direccion ? '📍 ' + list.direccion + '<br>' : ''}${list.telefono ? '☎️ ' + list.telefono + '<br>' : ''}Archivo: ${list.filename}</small>
-                            </div>
-                        </div>
-                        `;
-                        
-                    }).join('');
-
-                    listsDiv.innerHTML = html;
-                    updateStats(data.total, totalProducts);
-                })
-                .catch(error => console.error('Error cargando listas:', error));
+    fetch('/lists')
+      .then(response => response.json())
+      .then(data => {
+        const listsDiv = document.getElementById('loadedLists');
+        if (!listsDiv) return;
+        
+        if (data.total === 0) {
+          listsDiv.innerHTML = '<p style="color: #6c757d; text-align: center; padding: 20px;">No hay listas cargadas</p>';
+          return;
         }
-  function updateStats(totalLists, totalProducts) {
-              document.getElementById('totalLists').textContent = totalLists;
-              document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('es-AR');
-          }
-  /* =================== BUSCADOR =================== */
+
+        let totalProducts = 0;
+        const html = data.lists.map(list => {
+          totalProducts += list.total_products;
+          return `
+            <div class="list-item">
+              <div class="list-name">${escapeHtml(list.supplier)}</div>
+              <div class="list-info">
+                ${list.total_products} productos<br>
+                <small>${list.direccion ? '📍 ' + escapeHtml(list.direccion) + '<br>' : ''}${list.telefono ? '☎️ ' + escapeHtml(list.telefono) + '<br>' : ''}Actualizado: ${list.upload_date ? new Date(list.upload_date).toLocaleDateString() : 'N/A'}</small>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        listsDiv.innerHTML = html;
+      })
+      .catch(error => {
+        console.error('Error cargando listas:', error);
+        const listsDiv = document.getElementById('loadedLists');
+        if (listsDiv) {
+          listsDiv.innerHTML = '<p style="color: #dc3545; text-align: center; padding: 20px;">Error cargando listas</p>';
+        }
+      });
+  }
+
+  function loadStats() {
+    fetch('/stats')
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          const totalListsEl = document.getElementById('totalLists');
+          const totalProductsEl = document.getElementById('totalProducts');
+          
+          if (totalListsEl) totalListsEl.textContent = data.total_lists;
+          if (totalProductsEl) totalProductsEl.textContent = data.total_products.toLocaleString('es-AR');
+        }
+      })
+      .catch(error => console.error('Error cargando estadísticas:', error));
+  }
+
   function searchProducts() {
     const query = document.getElementById('searchInput').value.trim();
     const resultsDiv = document.getElementById('searchResults');
@@ -141,6 +187,8 @@
       showStatus('error', '🔍 Ingresa un término de búsqueda');
       return;
     }
+
+    isScrolling = true;
 
     resultsDiv.innerHTML = `
       <div class="loading">
@@ -154,7 +202,17 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
         return resp.json();
       })
-      .then(data => displayResults(data))
+      .then(data => {
+        displayResults(data);
+        const lastSearchEl = document.getElementById('lastSearch');
+        if (lastSearchEl) {
+          lastSearchEl.textContent = query.substring(0, 20) + (query.length > 20 ? '...' : '');
+        }
+        
+        setTimeout(() => {
+          isScrolling = false;
+        }, 500);
+      })
       .catch(err => {
         console.error('Error en búsqueda:', err);
         resultsDiv.innerHTML = `
@@ -165,13 +223,17 @@
             </div>
           </div>
         `;
+        
+        setTimeout(() => {
+          isScrolling = false;
+        }, 500);
       });
   }
 
   function displayResults(data) {
     const resultsDiv = document.getElementById('searchResults');
 
-    if (!data || !Array.isArray(data.results) || (data.total|0) === 0) {
+    if (!data || !Array.isArray(data.results) || (data.total || 0) === 0) {
       const message = (data && data.message)
         ? data.message
         : `No se encontraron productos que coincidan con "${escapeHtml((data && data.query) ? data.query : '')}"`;
@@ -196,7 +258,6 @@
       </div>
     `;
 
-    // Cards layout para móviles, tabla para desktop
     const isMobile = window.innerWidth <= 768;
     
     if (isMobile) {
@@ -204,12 +265,12 @@
         <div class="product-card">
           <div class="product-card-header">
             <h4 class="product-name">${escapeHtml(p.product)}</h4>
-            <div class="product-price">${escapeHtml(p.price_formatted || (Number(p.price)||0).toFixed(2))}</div>
+            <div class="product-price">${escapeHtml(p.price_formatted || '$' + (Number(p.price)||0).toFixed(2))}</div>
           </div>
           <div class="product-card-body">
             <div class="product-supplier">📦 ${escapeHtml(p.supplier)}</div>
             <button class="add-to-cart-btn mobile"
-              onclick="addToCart('${p.id}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
+              onclick="addToCart('${escapeHtml(p.id)}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
               🛒 Agregar
             </button>
           </div>
@@ -234,11 +295,11 @@
       const rows = data.results.map(p => `
         <tr>
           <td class="product-name-cell">${escapeHtml(p.product)}</td>
-          <td class="price-cell">${escapeHtml(p.price_formatted || (Number(p.price)||0).toFixed(2))}</td>
+          <td class="price-cell">${escapeHtml(p.price_formatted || '$' + (Number(p.price)||0).toFixed(2))}</td>
           <td class="supplier-cell">${escapeHtml(p.supplier)}</td>
           <td>
             <button class="add-to-cart-btn"
-              onclick="addToCart('${p.id}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
+              onclick="addToCart('${escapeHtml(p.id)}', '${escapeHtml(p.product)}', ${Number(p.price)}, '${escapeHtml(p.supplier)}')">
               🛒 Agregar
             </button>
           </td>
@@ -258,6 +319,11 @@
         <p style="margin-top:10px; font-size:.9rem; color:#28a745;">✨ Encuentra los mejores precios</p>
       </div>
     `;
+    
+    const lastSearchEl = document.getElementById('lastSearch');
+    if (lastSearchEl) {
+      lastSearchEl.textContent = '-';
+    }
   }
 
   function escapeHtml(text) {
@@ -266,7 +332,6 @@
     return div.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
   }
 
-  /* =================== CARRITO =================== */
   function addToCart(productId, productName, price, supplier) {
     fetch('/cart/add', {
       method:'POST',
@@ -284,7 +349,7 @@
       if (data.success) {
         showStatus('success', `✅ ${escapeHtml(productName)} agregado al carrito`);
         loadCart();
-        updateMobileCounter(); // ✅ NUEVO: Actualizar contador móvil
+        updateMobileCounter();
       } else {
         showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo agregar al carrito')}`);
       }
@@ -299,14 +364,17 @@
     fetch('/cart/get')
       .then(r => r.json())
       .then(data => { 
-        cartData = data || { cart: [], total: 0, total_formatted: '$0.00' }; 
-        updateCartDisplay(); 
-        updateMobileCounter(); // ✅ NUEVO: Actualizar contador móvil
+        if (data.success) {
+          cartData = data || { cart: [], total: 0, total_formatted: '$0.00' }; 
+          updateCartDisplay(); 
+          updateMobileCounter();
+        } else {
+          console.error('Error cargando carrito:', data.error);
+        }
       })
       .catch(err => console.error('Error cargando carrito:', err));
   }
 
-  // ✅ NUEVO: Función para actualizar el contador móvil
   function updateMobileCounter() {
     const counter = document.getElementById('mobileCartCounter');
     if (!counter) return;
@@ -327,8 +395,7 @@
       </div>
     `;
 
-    // Solo mostrar si ya se scrolleó hacia abajo
-    if (window.scrollY > 100) {
+    if (window.scrollY > 100 && !isScrolling) {
       counter.style.display = 'flex';
       counter.style.opacity = '1';
     }
@@ -337,15 +404,15 @@
   function updateCartDisplay() {
     const cartItemsDiv = document.getElementById('cartItems');
     const cartCountSpan = document.getElementById('cartCount');
-    const cartTotalDiv  = document.getElementById('cartTotal');
+    const cartTotalDiv = document.getElementById('cartTotal');
     const totalAmountSpan = document.getElementById('totalAmount');
 
     const items = Array.isArray(cartData?.cart) ? cartData.cart : [];
-    cartCountSpan.textContent = items.length;
+    if (cartCountSpan) cartCountSpan.textContent = items.length;
 
     if (items.length === 0) {
-      cartItemsDiv.innerHTML = '<p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>';
-      cartTotalDiv.style.display = 'none';
+      if (cartItemsDiv) cartItemsDiv.innerHTML = '<p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>';
+      if (cartTotalDiv) cartTotalDiv.style.display = 'none';
       return;
     }
 
@@ -354,7 +421,7 @@
         <div class="cart-item-info">
           <div class="cart-item-name">${escapeHtml(item.product)}</div>
           <div class="cart-item-details">
-            ${escapeHtml(item.supplier)} • ${(Number(item.price) || 0).toFixed(2)} c/u
+            ${escapeHtml(item.supplier)} • $${(Number(item.price) || 0).toFixed(2)} c/u
           </div>
         </div>
         <div class="cart-item-controls">
@@ -369,16 +436,15 @@
       </div>
     `).join('');
 
-    cartItemsDiv.innerHTML = html;
-    totalAmountSpan.textContent = cartData.total_formatted || (Number(cartData.total) || 0).toFixed(2);
-    cartTotalDiv.style.display = 'block';
+    if (cartItemsDiv) cartItemsDiv.innerHTML = html;
+    if (totalAmountSpan) totalAmountSpan.textContent = cartData.total_formatted || '$' + (Number(cartData.total) || 0).toFixed(2);
+    if (cartTotalDiv) cartTotalDiv.style.display = 'block';
   }
 
   function updateQuantity(productId, newQuantity) {
     const q = parseInt(newQuantity, 10);
     if (isNaN(q) || q < 1) { removeFromCart(productId); return; }
 
-    // ✅ EXTRAER SUPPLIER DEL PRODUCT_ID
     const supplier = extractSupplierFromId(productId);
 
     fetch('/cart/update', {
@@ -386,7 +452,7 @@
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ 
         product_id: productId, 
-        supplier: supplier,  // ✅ AGREGAR SUPPLIER
+        supplier: supplier,
         quantity: q 
       })
     })
@@ -394,7 +460,7 @@
     .then(data => {
       if (data.success) {
         loadCart();
-        updateMobileCounter(); // ✅ NUEVO
+        updateMobileCounter();
       } else {
         showStatus('error', `❌ Error actualizando cantidad: ${escapeHtml(data.error || '')}`);
       }
@@ -402,10 +468,7 @@
     .catch(err => { console.error('Error actualizando cantidad:', err); showStatus('error','❌ Error de conexión'); });
   }
   
-  // ✅ NUEVA FUNCIÓN PARA EXTRAER SUPPLIER DEL ID
   function extractSupplierFromId(productId) {
-    // El ID tiene formato: "Gallesur|BAGGIO NARANJA S/AZC X200|20.5200"
-    // El supplier es la primera parte antes del primer |
     if (productId && productId.includes('|')) {
       return productId.split('|')[0];
     }
@@ -413,7 +476,6 @@
   }
   
   function removeFromCart(productId) {
-    // ✅ EXTRAER SUPPLIER DEL PRODUCT_ID
     const supplier = extractSupplierFromId(productId);
 
     fetch('/cart/remove', {
@@ -421,7 +483,7 @@
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ 
         product_id: productId,
-        supplier: supplier  // ✅ AGREGAR SUPPLIER
+        supplier: supplier
       })
     })
     .then(r => r.json())
@@ -429,7 +491,7 @@
       if (data.success) { 
         showStatus('success','✅ Producto eliminado del carrito'); 
         loadCart(); 
-        updateMobileCounter(); // ✅ NUEVO
+        updateMobileCounter();
       }
       else { showStatus('error', `❌ Error: ${escapeHtml(data.error || 'No se pudo eliminar')}`); }
     })
@@ -444,7 +506,7 @@
         if (data.success) {
           showStatus('success','🗑️ Carrito vaciado');
           loadCart();
-          updateMobileCounter(); // ✅ NUEVO
+          updateMobileCounter();
         } else {
           showStatus('error','❌ Error vaciando carrito');
         }
@@ -452,232 +514,216 @@
       .catch(err => { console.error('Error vaciando carrito:', err); showStatus('error','❌ Error de conexión'); });
   }
 
-  /* =================== DATOS DEL NEGOCIO =================== */
-// Función corregida para guardar datos del negocio
   function saveBusinessData() {
-      console.log("🚀 Guardando datos del negocio...");
+    console.log("🚀 Guardando datos del negocio...");
+    
+    const requiredFields = [
+      { id: 'businessName', name: 'Nombre del comercio' },
+      { id: 'businessAddress', name: 'Dirección' },
+      { id: 'businessPhone', name: 'Teléfono' }
+    ];
+    
+    for (const field of requiredFields) {
+      const el = document.getElementById(field.id);
+      if (!el.value.trim()) {
+        showStatus('error', `❌ ${field.name} es obligatorio`);
+        el.focus();
+        return;
+      }
+    }
+    
+    const payload = {
+      businessName: document.getElementById('businessName').value.trim(),
+      contactPerson: document.getElementById('contactPerson').value.trim(),
+      businessAddress: document.getElementById('businessAddress').value.trim(),
+      businessPhone: document.getElementById('businessPhone').value.trim(),
+      businessEmail: document.getElementById('businessEmail').value.trim(),
+    };
+
+    console.log("📦 Datos a enviar:", payload);
+
+    fetch('/business/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+    .then(({ ok, status, data }) => {
+      console.log("📥 Respuesta del servidor:", { ok, status, data });
       
-      // Validación mejorada
-      const requiredFields = [
-          { id: 'businessName', name: 'Nombre del comercio' },
-          { id: 'businessAddress', name: 'Dirección' },
-          { id: 'businessPhone', name: 'Teléfono' }
-      ];
-      
-      for (const field of requiredFields) {
-          const el = document.getElementById(field.id);
-          if (!el.value.trim()) {
-              showStatus('error', `❌ ${field.name} es obligatorio`);
-              el.focus();
-              return;
-          }
+      if (!ok || data.success === false) {
+        const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+        console.error("❌ Error del servidor:", errorMsg);
+        showStatus('error', `❌ Error: ${errorMsg}`);
+        return;
       }
       
-      // Preparar datos
-      const payload = {
-          businessName: document.getElementById('businessName').value.trim(),
-          contactPerson: document.getElementById('contactPerson').value.trim(),
-          businessAddress: document.getElementById('businessAddress').value.trim(),
-          businessPhone: document.getElementById('businessPhone').value.trim(),
-          businessEmail: document.getElementById('businessEmail').value.trim(),
-      };
-
-      console.log("📦 Datos a enviar:", payload);
-
-      // Guardar en BD
-      fetch('/business/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-      })
-      .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
-      .then(({ ok, status, data }) => {
-          console.log("📥 Respuesta del servidor:", { ok, status, data });
-          
-          if (!ok || data.success === false) {
-              const errorMsg = data.error || data.message || `Error HTTP ${status}`;
-              console.error("❌ Error del servidor:", errorMsg);
-              showStatus('error', `❌ Error: ${errorMsg}`);
-              return;
-          }
-          
-          // Éxito - marcar como guardado y cerrar modal
-          businessDataSaved = true;
-          console.log("✅ Datos guardados exitosamente");
-          showStatus('success', '✅ Datos del comercio guardados correctamente');
-          closeBusinessModal();
-          
-          // Opcional: generar PDFs automáticamente después de guardar
-          setTimeout(() => {
-              generatePDFs();
-          }, 1000);
-      })
-      .catch(err => {
-          console.error('❌ Error de conexión:', err);
-          showStatus('error', '❌ Error de conexión al guardar datos');
-      });
+      businessDataSaved = true;
+      console.log("✅ Datos guardados exitosamente");
+      showStatus('success', '✅ Datos del comercio guardados correctamente');
+      closeBusinessModal();
+      
+      setTimeout(() => {
+        generatePDFs();
+      }, 1000);
+    })
+    .catch(err => {
+      console.error('❌ Error de conexión:', err);
+      showStatus('error', '❌ Error de conexión al guardar datos');
+    });
   }
 
-
-// Función para cargar datos existentes
-function loadBusinessData() {
-    console.log("🔍 Cargando datos existentes del negocio...");
+  function loadBusinessData() {
+    console.log("📍 Cargando datos existentes del negocio...");
     
     fetch("/business/get", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" }
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
     })
     .then(r => r.json())
     .then(data => {
-        console.log("📥 Datos obtenidos:", data);
+      console.log("📥 Datos obtenidos:", data);
+      
+      if (data.success && data.data) {
+        const businessData = data.data;
         
-        if (data.success && data.data) {
-            const businessData = data.data;
-            
-            // Mapear campos de BD a formulario
-            document.getElementById("businessName").value = businessData.business_name || '';
-            document.getElementById("contactPerson").value = businessData.comercio || businessData.contact_person || '';
-            document.getElementById("businessAddress").value = businessData.address || '';
-            document.getElementById("businessPhone").value = businessData.phone || '';
-            document.getElementById("businessEmail").value = businessData.email || '';
-            
-            // Verificar si los datos están completos
-            const isComplete = !!(
-                businessData.business_name?.trim() && 
-                businessData.address?.trim() && 
-                businessData.phone?.trim()
-            );
-            
-            businessDataSaved = isComplete;
-            console.log(`✅ Datos cargados. Completos: ${isComplete}`);
-        } else {
-            console.log("ℹ️ No hay datos previos del negocio");
-            businessDataSaved = false;
-        }
+        document.getElementById("businessName").value = businessData.business_name || '';
+        document.getElementById("contactPerson").value = businessData.comercio || businessData.contact_person || '';
+        document.getElementById("businessAddress").value = businessData.address || '';
+        document.getElementById("businessPhone").value = businessData.phone || '';
+        document.getElementById("businessEmail").value = businessData.email || '';
+        
+        const isComplete = !!(
+          businessData.business_name?.trim() && 
+          businessData.address?.trim() && 
+          businessData.phone?.trim()
+        );
+        
+        businessDataSaved = isComplete;
+        console.log(`✅ Datos cargados. Completos: ${isComplete}`);
+      } else {
+        console.log("ℹ️ No hay datos previos del negocio");
+        businessDataSaved = false;
+      }
     })
     .catch(err => {
-        console.error("❌ Error cargando datos:", err);
-        businessDataSaved = false;
+      console.error("❌ Error cargando datos:", err);
+      businessDataSaved = false;
     });
-}
-  function populateBusinessForm(d) {
-    // Backend guarda claves: business_name, address, phone, email, contact_person
-    document.getElementById('businessName').value    = d.business_name   || '';
-    document.getElementById('contactPerson').value   = d.contact_person  || '';
-    document.getElementById('businessAddress').value = d.address         || '';
-    document.getElementById('businessPhone').value   = d.phone           || '';
-    document.getElementById('businessEmail').value   = d.email           || '';
   }
 
   function openBusinessModal() {
-      const m = document.getElementById('businessModal');
+    const m = document.getElementById('businessModal');
+    if (m) {
       m.style.display = 'block';
       m.setAttribute('aria-hidden', 'false');
       
-      // Cargar datos existentes cada vez que se abre
       loadBusinessData();
       
-      // Focus en el primer campo
       setTimeout(() => {
-          document.getElementById('businessName').focus();
+        const businessNameField = document.getElementById('businessName');
+        if (businessNameField) businessNameField.focus();
       }, 100);
+    }
   }
 
   function closeBusinessModal() {
     const m = document.getElementById('businessModal');
-    m.style.display = 'none';
-    m.setAttribute('aria-hidden', 'true');
+    if (m) {
+      m.style.display = 'none';
+      m.setAttribute('aria-hidden', 'true');
+    }
   }
 
   function checkBusinessDataFromDB() {
-      return fetch('/business/check', {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-      })
-      .then(r => r.json())
-      .then(data => {
-          console.log('📊 Estado de datos del negocio:', data);
-          return data.has_complete_data || false;
+    return fetch('/business/check', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+      console.log('📊 Estado de datos del negocio:', data);
+      return data.has_complete_data || false;
+    })
+    .catch(err => {
+      console.error('Error verificando datos:', err);
+      return false;
+    });
+  }
+
+  function checkBusinessDataAndGeneratePDFs() {
+    if (!Array.isArray(cartData.cart) || cartData.cart.length === 0) {
+      showStatus('info', '🛒 Agrega productos al carrito antes de generar PDFs.');
+      return;
+    }
+
+    checkBusinessDataFromDB()
+      .then(hasCompleteData => {
+        if (hasCompleteData) {
+          generatePDFs();
+        } else {
+          showStatus('info', 'ℹ️ Completá los datos del comercio para continuar.');
+          openBusinessModal();
+        }
       })
       .catch(err => {
-          console.error('Error verificando datos:', err);
-          return false;
+        console.error('Error verificando datos del negocio:', err);
+        showStatus('error', '❌ Error verificando datos del comercio');
       });
-  }
-  /* =================== PDFs =================== */
-  function checkBusinessDataAndGeneratePDFs() {
-      if (!Array.isArray(cartData.cart) || cartData.cart.length === 0) {
-          showStatus('info', '🛒 Agrega productos al carrito antes de generar PDFs.');
-          return;
-      }
-
-      // Verificar datos del negocio directamente desde la BD
-      checkBusinessDataFromDB()
-          .then(hasCompleteData => {
-              if (hasCompleteData) {
-                  generatePDFs();
-              } else {
-                  showStatus('info', 'ℹ️ Completá los datos del comercio para continuar.');
-                  openBusinessModal();
-              }
-          })
-          .catch(err => {
-              console.error('Error verificando datos del negocio:', err);
-              showStatus('error', '❌ Error verificando datos del comercio');
-          });
   }
 
   function generatePDFs() {
-      showStatus('info', '⏳ Generando PDFs por proveedor...');
-      
-      fetch('/cart/generate_pdfs', { method: 'POST' })
-          .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
-          .then(({ ok, status, data }) => {
-              console.log('📥 Respuesta generación PDFs:', { ok, status, data });
-              
-              if (!ok || data.success === false) {
-                  // Si faltan datos del negocio, abrir modal
-                  if (data.show_business_form) {
-                      showStatus('info', data.message || 'Completa los datos del comercio');
-                      openBusinessModal();
-                      return;
-                  }
-                  
-                  const errorMsg = data.error || data.message || `Error HTTP ${status}`;
-                  showStatus('error', `❌ Error generando PDFs: ${errorMsg}`);
-                  return;
-              }
-              
-              // Éxito
-              showStatus('success', `✅ ${data.total_suppliers || 0} PDF(s) generados correctamente`);
-              renderPdfResults(data);
-              clearSearch();
-          })
-          .catch(err => {
-              console.error('Error generando PDFs:', err);
-              showStatus('error', '❌ Error de conexión al generar PDFs');
-          });
+    showStatus('info', '⏳ Generando PDFs por proveedor...');
+    
+    fetch('/cart/generate_pdfs', { method: 'POST' })
+      .then(r => r.json().then(j => ({ ok: r.ok, status: r.status, data: j })))
+      .then(({ ok, status, data }) => {
+        console.log('📥 Respuesta generación PDFs:', { ok, status, data });
+        
+        if (!ok || data.success === false) {
+          if (data.show_business_form) {
+            showStatus('info', data.message || 'Completa los datos del comercio');
+            openBusinessModal();
+            return;
+          }
+          
+          const errorMsg = data.error || data.message || `Error HTTP ${status}`;
+          showStatus('error', `❌ Error generando PDFs: ${errorMsg}`);
+          return;
+        }
+        
+        showStatus('success', `✅ ${data.total_suppliers || 0} PDF(s) generados correctamente`);
+        renderPdfResults(data);
+        clearSearch();
+      })
+      .catch(err => {
+        console.error('Error generando PDFs:', err);
+        showStatus('error', '❌ Error de conexión al generar PDFs');
+      });
   }
+
   function renderPdfResults(data) {
     const wrapper = document.getElementById('pdfResults');
+    if (!wrapper) return;
+    
     const pdfs = Array.isArray(data.pdfs) ? data.pdfs : [];
     if (pdfs.length === 0) {
       wrapper.style.display = 'none';
       return;
     }
+    
     const items = pdfs.map(p => {
       const supplier = escapeHtml(p.supplier || 'Proveedor');
       const filename = escapeHtml(p.filename || 'pedido.pdf');
-      const url = `/download_pdf/${encodeURIComponent(p.filename)}`; // ← endpoint backend
+      const url = `/download_pdf/${encodeURIComponent(p.filename)}`;
       const total = escapeHtml(p.total_formatted || '');
       const count = Number(p.items_count) || 0;
 
-      // Link de WhatsApp si viene en whatsapp_links
       const linkWA = (data.whatsapp_links || []).find(w => w.supplier === p.supplier);
       const waUrl = linkWA ? linkWA.url : buildWhatsAppLink(`Hola, adjunto pedido para ${supplier}. Total: ${total}`);
 
       return `
-       <div class="pdf-item">
+        <div class="pdf-item">
           <div class="pdf-info">
             <div class="pdf-supplier">📦 ${supplier}</div>
             <div class="pdf-details">
@@ -701,12 +747,11 @@ function loadBusinessData() {
     return `https://wa.me/?text=${text}`;
   }
 
-  /* =================== UI HELPERS =================== */
   function showStatus(type, msg) {
     const box = document.createElement('div');
     box.className = `status-message status-${type}`;
     box.innerHTML = escapeHtml(msg);
-    const host = document.getElementById('statusMessages');
+    const host = document.getElementById('statusMessages') || document.body;
     host.appendChild(box);
 
     setTimeout(() => {
@@ -716,30 +761,32 @@ function loadBusinessData() {
     }, 3500);
   }
 
-  // Cerrar modal con click afuera / ESC
   window.addEventListener('click', (e) => {
     const modal = document.getElementById('businessModal');
-    if (e.target === modal) closeBusinessModal();
+    if (modal && e.target === modal) closeBusinessModal();
   });
+  
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeBusinessModal();
   });
 
-// Detectar cambios de orientación y tamaño para re-renderizar resultados
-window.addEventListener('resize', () => {
-  const resultsDiv = document.getElementById('searchResults');
-  if (resultsDiv.children.length > 0 && !resultsDiv.querySelector('.no-results')) {
-    // Si hay resultados, re-renderizar con el nuevo formato
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput.value.trim()) {
-      searchProducts();
-    }
-  }
-});
+  window.addEventListener('resize', debounce(() => {
+    updateMobileCounter();
+  }, 250));
 
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
 </script>
   <style>
-    /* ====== THEME / RESET ====== */
     * { margin:0; padding:0; box-sizing:border-box; }
     :root {
       --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -765,6 +812,8 @@ window.addEventListener('resize', () => {
       padding: 0.5rem;
       position: relative;
       overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
     }
     body::before {
       content:'';
@@ -786,6 +835,7 @@ window.addEventListener('resize', () => {
       overflow: hidden;
       border: 1px solid var(--glass-border);
       animation: slideIn .8s cubic-bezier(0.165, 0.84, 0.44, 1);
+      position: relative;
     }
     @keyframes slideIn { from {opacity:0; transform: translateY(30px);} to {opacity:1; transform: translateY(0);} }
 
@@ -819,10 +869,9 @@ window.addEventListener('resize', () => {
     
     .left-panel { 
       padding: 1.5rem 1rem;
-      max-height: calc(100vh - 200px);
       overflow-y: auto;
-      /* ✅ ARREGLO CLAVE: Permitir scroll */
-      overscroll-behavior-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     
     .sidebar {
@@ -830,8 +879,9 @@ window.addEventListener('resize', () => {
       border-top: 1px solid rgba(0,0,0,.1);
       padding: 1.5rem 1rem; 
       position: relative;
-      max-height: 50vh;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .sidebar::before { 
       content:''; 
@@ -843,7 +893,6 @@ window.addEventListener('resize', () => {
       background: var(--accent-gradient); 
     }
     
-    /* ✅ NUEVO: Contador móvil flotante */
     .mobile-cart-counter {
       position: fixed;
       bottom: 20px;
@@ -864,17 +913,13 @@ window.addEventListener('resize', () => {
       font-weight: 600;
       font-size: 0.9rem;
       min-width: 160px;
+      pointer-events: auto;
+      will-change: opacity, transform;
     }
 
     .mobile-cart-counter:hover {
       transform: translateY(0px) scale(1.05);
       box-shadow: 0 12px 40px rgba(31, 38, 135, 0.5);
-    }
-
-    .mobile-cart-counter.show {
-      display: flex;
-      opacity: 1;
-      transform: translateY(0);
     }
 
     .mobile-counter-content {
@@ -899,6 +944,33 @@ window.addEventListener('resize', () => {
       margin-bottom: 20px;
     }
     
+    .list-item {
+      background: #fff;
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      border: 1px solid #e9ecef;
+      transition: var(--transition);
+    }
+    
+    .list-item:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    }
+    
+    .list-name {
+      font-weight: 700;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+    
+    .list-info {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      line-height: 1.3;
+    }
+    
     .section-title {
       font-size:1.1rem; font-weight:700; color: var(--text-primary);
       margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; position:relative;
@@ -907,7 +979,6 @@ window.addEventListener('resize', () => {
       content:''; flex:1; height:2px; background: linear-gradient(to right, #28a745, transparent); margin-left:.5rem;
     }
 
-    /* Search Section - Más compacto */
     .search-container { 
       position:relative; 
       margin-bottom:1rem; 
@@ -958,15 +1029,13 @@ window.addEventListener('resize', () => {
     .clear-btn  { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color:#fff; }
     .search-btn:hover, .clear-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 
-    /* Results Section - Optimizado para scroll */
     .results-section { 
-      /* ✅ ARREGLO CLAVE: Permitir que crezca dinámicamente */
       min-height: 200px; 
       margin-bottom: 1rem;
-      /* ✅ NO limitar altura máxima */
+      height: auto;
+      overflow: visible;
     }
     
-    /* Results Info - Más compacto */
     .results-info {
       margin-bottom:1rem; 
       padding:.75rem 1rem; 
@@ -999,7 +1068,6 @@ window.addEventListener('resize', () => {
       opacity: 0.9;
     }
 
-    /* Tabla para desktop */
     .results-table {
       width:100%; 
       border-collapse:collapse; 
@@ -1076,13 +1144,13 @@ window.addEventListener('resize', () => {
       box-shadow: 0 4px 15px rgba(40,167,69,.4); 
     }
 
-    /* Cards para móvil */
     .results-cards {
       display: grid;
       gap: 0.75rem;
       margin-top: 1rem;
-      /* ✅ ARREGLO: Permitir que las cards fluyan naturalmente */
       min-height: auto;
+      height: auto;
+      overflow: visible;
     }
     
     .product-card {
@@ -1092,6 +1160,7 @@ window.addEventListener('resize', () => {
       box-shadow: 0 3px 10px rgba(0,0,0,.08);
       border: 1px solid #e9ecef;
       transition: var(--transition);
+      will-change: transform;
     }
     
     .product-card:hover {
@@ -1176,7 +1245,6 @@ window.addEventListener('resize', () => {
     }
     @keyframes spin { 0% {transform:rotate(0deg);} 100% {transform:rotate(360deg);} }
 
-    /* Cart - Compacto para sidebar */
     .cart-section { 
       background:#fff; 
       border-radius:10px; 
@@ -1321,7 +1389,6 @@ window.addEventListener('resize', () => {
       box-shadow: 0 4px 15px rgba(0,0,0,.3); 
     }
 
-    /* Modal */
     .modal { 
       display:none; 
       position:fixed; 
@@ -1412,7 +1479,6 @@ window.addEventListener('resize', () => {
       box-shadow: 0 4px 15px rgba(0,0,0,.3); 
     }
 
-    /* PDF results - Compacto */
     .pdf-results { 
       background:#fff; 
       border-radius:10px; 
@@ -1558,16 +1624,19 @@ window.addEventListener('resize', () => {
       border:1px solid #bee5eb; 
     }
 
-    /* Responsive específico */
+    /* Responsive */
     @media (max-width: 768px) {
       body { 
         padding: 0.25rem; 
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
       } 
       
       .container { 
         border-radius: 12px; 
-        max-height: none; /* ✅ ARREGLO: Permitir altura dinámica */
-        overflow: visible; /* ✅ ARREGLO: Permitir overflow */
+        max-height: none;
+        height: auto;
+        overflow: visible;
       }
       
       .header { 
@@ -1584,23 +1653,29 @@ window.addEventListener('resize', () => {
       
       .main-content {
         grid-template-columns: 1fr;
-        min-height: auto; /* ✅ ARREGLO: Altura automática */
+        min-height: auto;
+        height: auto;
       }
       
       .left-panel { 
         padding: 1rem 0.75rem; 
-        max-height: none; /* ✅ ARREGLO: Sin límite de altura */
-        overflow-y: visible; /* ✅ ARREGLO: Permitir scroll natural */
+        max-height: none;
+        height: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
       }
       
       .sidebar {
         border-top: 1px solid rgba(0,0,0,.1);
-        max-height: none; /* ✅ ARREGLO: Sin límite de altura */
-        overflow-y: visible; /* ✅ ARREGLO: Scroll natural */
+        max-height: none;
+        height: auto;
+        overflow-y: visible;
         padding: 1rem 0.75rem; 
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
       }
       
-      /* ✅ MOSTRAR contador móvil solo en móviles */
       .mobile-cart-counter {
         display: flex;
       }
@@ -1633,18 +1708,22 @@ window.addEventListener('resize', () => {
         gap: 0.5rem;
       }
       
-      /* Ocultar tabla en móvil */
       .results-table {
         display: none;
       }
       
-      /* Mostrar cards en móvil */
       .results-cards {
         display: block;
       }
+      
+      .results-section {
+        min-height: auto;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+      }
     }
     
-    /* Mostrar tabla en desktop, ocultar contador móvil */
     @media (min-width: 769px) {
       .main-content {
         grid-template-columns: 1fr 350px;
@@ -1656,6 +1735,9 @@ window.addEventListener('resize', () => {
       
       .left-panel {
         padding: 2rem 1.5rem;
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
       
       .sidebar {
@@ -1664,6 +1746,7 @@ window.addEventListener('resize', () => {
         padding: 2rem 1.5rem;
         max-height: calc(100vh - 160px);
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
       
       .sidebar::before {
@@ -1679,7 +1762,6 @@ window.addEventListener('resize', () => {
         display: none;
       }
       
-      /* ✅ OCULTAR contador móvil en desktop */
       .mobile-cart-counter {
         display: none !important;
       }
@@ -1698,7 +1780,6 @@ window.addEventListener('resize', () => {
       }
     }
     
-    /* Ajustes adicionales para tablets */
     @media (min-width: 768px) and (max-width: 1024px) {
       .main-content {
         grid-template-columns: 1fr 280px;
@@ -1709,10 +1790,9 @@ window.addEventListener('resize', () => {
       }
     }
     
-    /* Mejoras para pantallas muy pequeñas */
     @media (max-width: 480px) {
       .search-input {
-        font-size: 16px; /* Previene zoom en iOS */
+        font-size: 16px;
       }
       
       .product-card {
@@ -1735,10 +1815,9 @@ window.addEventListener('resize', () => {
       }
       
       .form-input {
-        font-size: 16px; /* Previene zoom en iOS */
+        font-size: 16px;
       }
       
-      /* ✅ Ajustar contador móvil para pantallas pequeñas */
       .mobile-cart-counter {
         bottom: 15px;
         right: 15px;
@@ -1746,35 +1825,41 @@ window.addEventListener('resize', () => {
         font-size: 0.8rem;
         min-width: 140px;
       }
+      
+      .results-cards {
+        margin-bottom: 2rem;
+      }
+      
+      .product-card:last-child {
+        margin-bottom: 1rem;
+      }
     }
     
-    /* Scrollbar personalizado */
     .left-panel::-webkit-scrollbar,
     .sidebar::-webkit-scrollbar {
-      width: 6px;
+      width: 4px;
     }
     
     .left-panel::-webkit-scrollbar-track,
     .sidebar::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 3px;
+      background: transparent;
     }
     
     .left-panel::-webkit-scrollbar-thumb,
     .sidebar::-webkit-scrollbar-thumb {
-      background: #c1c1c1;
-      border-radius: 3px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 2px;
     }
     
     .left-panel::-webkit-scrollbar-thumb:hover,
     .sidebar::-webkit-scrollbar-thumb:hover {
-      background: #a8a8a8;
+      background: rgba(0,0,0,0.3);
     }
   </style>
 </head>
 <body>
   <div class="logout-wrap">
-    <form action="{{ url_for('logout') }}" method="post">
+    <form action="/logout" method="post">
       <button type="submit" class="logout-btn" title="Cerrar sesión">
         <span>⟵</span>
         <span>Cerrar sesión</span>
@@ -1782,7 +1867,6 @@ window.addEventListener('resize', () => {
     </form>
   </div>
 
-  <!-- Modal para datos del negocio -->
   <div id="businessModal" class="modal" aria-hidden="true" role="dialog">
     <div class="modal-content">
       <div class="modal-header">
@@ -1822,13 +1906,12 @@ window.addEventListener('resize', () => {
     <div class="header">
       <div class="user-badge">👤 {{ user }}</div>
       
-      <h1>🛍️ ComparApp+</h1>
+      <h1>🛒 ComparApp Argentina</h1>
       <p>Compará productos y armá tu pedido sin gastar de más.</p>
     </div>
 
     <div class="main-content">
       <div class="left-panel">
-        <!-- Search Section -->
         <div class="search-section">
           <h3 class="section-title">🔍 Buscar Productos</h3>
           <div class="search-container">
@@ -1841,7 +1924,6 @@ window.addEventListener('resize', () => {
           </div>
         </div>
 
-        <!-- Results Section -->
         <div class="results-section">
           <div id="searchResults">
             <div class="no-results">
@@ -1851,15 +1933,11 @@ window.addEventListener('resize', () => {
           </div>
         </div>
 
-        <!-- Status Messages -->
         <div id="statusMessages" aria-live="polite"></div>
-
-        <!-- PDF Results -->
         <div id="pdfResults" style="display:none;"></div>
       </div>
 
       <div class="sidebar">
-        <!-- Cart Section -->
         <div class="cart-section">
           <div class="cart-header">
             <div class="cart-title">
@@ -1868,32 +1946,28 @@ window.addEventListener('resize', () => {
             </div>
           </div>
 
-          <!-- Items -->
           <div id="cartItems">
             <p style="text-align:center; color:#6c757d; padding:20px;">Carrito vacío</p>
           </div>
 
-          <!-- Total y acciones (solo se muestra si hay productos) -->
           <div id="cartTotal" style="display:none;">
             <div class="cart-total">
               <div class="cart-total-amount" id="totalAmount">$0.00</div>
             </div>
             <div class="cart-actions">
-              <button class="cart-btn generate-pdf-btn" onclick="checkBusinessDataAndGeneratePDFs()">📄 Generar PDFs</button>
-              <button class="cart-btn clear-cart-btn" onclick="clearCart()">🗑️ Vaciar</button>
+              <button class="cart-btn generate-pdf-btn" onclick="checkBusinessDataAndGeneratePDFs()">📄 Terminar pedido</button>
+              <button class="cart-btn clear-cart-btn" onclick="clearCart()">🗑️ Vaciar carrito</button>
             </div>
           </div>
         </div>
 
-        <!-- Listas cargadas -->
         <div class="loaded-lists">
           <h4 class="section-title">📋 Listas</h4>
           <div id="loadedLists">
-            <p style="color: #6c757d; text-align: center; padding: 15px; font-size: 0.85rem;">No hay listas cargadas</p>
+            <p style="color: #6c757d; text-align: center; padding: 15px; font-size: 0.85rem;">Cargando listas...</p>
           </div>
         </div>
 
-        <!-- Estadísticas -->
         <div class="stats-section">
           <h4 style="margin-bottom: 12px; color: #2c3e50; font-size: 0.95rem;">📊 Estadísticas</h4>
           <div class="stat-item">

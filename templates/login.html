@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Comparador de Precios</title>
+    <title>ComparApp Argentina</title>
     <style>
         * {
             margin: 0;
@@ -22,7 +22,6 @@
             overflow: hidden;
         }
 
-        /* Animated background elements */
         .bg-animation {
             position: absolute;
             top: 0;
@@ -186,6 +185,7 @@
             letter-spacing: 1px;
             position: relative;
             overflow: hidden;
+            margin-bottom: 15px;
         }
 
         .login-btn::before {
@@ -208,8 +208,33 @@
             left: 100%;
         }
 
-        .login-btn:active {
-            transform: translateY(-1px);
+        .social-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: transform 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .social-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .instagram-btn {
+            background: linear-gradient(135deg, #fd1d1d, #833ab4);
+        }
+
+        .whatsapp-btn {
+            background: #25d366;
         }
 
         .features {
@@ -261,7 +286,7 @@
         <div class="logo-section">
             <div class="logo-icon"></div>
             <h2>Iniciar Sesión</h2>
-            <p class="subtitle">Comparador de Precios</p>
+            <p class="subtitle">ComparApp Argentina</p>
         </div>
 
         <form method="post" action="{{ url_for('login') }}">
@@ -278,6 +303,14 @@
             <button type="submit" class="login-btn">Ingresar</button>
         </form>
 
+        <!-- Botones sociales para pedir usuario GRATIS -->
+        <a href="https://www.instagram.com/comparapp_argentina/" target="_blank" class="social-btn instagram-btn">
+            📷 Pedir acceso GRATIS por Instagram
+        </a>
+        <a href="https://wa.me/541164703346" target="_blank" class="social-btn whatsapp-btn">
+            💬 Pedir acceso GRATIS por WhatsApp
+        </a>
+
         <div class="features">
             <div class="feature-item">
                 <span class="feature-icon">🔍</span>
@@ -285,7 +318,6 @@
                     100% GRATIS
                 </span>
             </div>
-
         </div>
     </div>
 </body>
